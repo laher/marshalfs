@@ -10,20 +10,23 @@ import (
 	"time"
 )
 
-type PatternGenerator func(name string) (*MarshalFile, error)
+type Generator func(name string) (*MarshalFile, error)
 type MarshalFunc func(i interface{}) ([]byte, error)
 
 // A MarshalFS is a simple read-only filesystem backed by objects and some serialization function.
 type MarshalFS struct {
 	Files    map[string]*MarshalFile
-	Patterns map[string]PatternGenerator
+	Patterns map[string]Generator
 	Marshal  MarshalFunc
-	Cache    bool
+}
+
+func NewFile(value interface{}) *MarshalFile {
+	return &MarshalFile{value: value}
 }
 
 // A MarshalFile describes a single file in a MarshalFS.
 type MarshalFile struct {
-	Value   interface{}
+	value   interface{}
 	Mode    fs.FileMode // FileInfo.Mode
 	ModTime time.Time   // FileInfo.ModTime
 	Sys     interface{} // FileInfo.Sys
@@ -110,12 +113,12 @@ func (mfs MarshalFS) Open(name string) (fs.File, error) {
 }
 
 func marshalNoCache(f *MarshalFile, marshaller MarshalFunc) ([]byte, error) {
-	return marshaller(f.Value)
+	return marshaller(f.value)
 }
 
 func sizeNoCache(f *MarshalFile, marshaller MarshalFunc) func() int64 {
 	return func() int64 {
-		b, _ := marshaller(f.Value)
+		b, _ := marshaller(f.value)
 		return int64(len(b))
 	}
 }
@@ -185,10 +188,10 @@ type openMarshalFile struct {
 
 // TODO cache bytes?
 func (f *openMarshalFile) Marshal() ([]byte, error) {
-	if f.marshalFileInfo.f.Value == nil {
+	if f.marshalFileInfo.f.value == nil {
 		return nil, nil
 	}
-	return f.marshaller(f.marshalFileInfo.f.Value)
+	return f.marshaller(f.marshalFileInfo.f.value)
 }
 
 func (f *openMarshalFile) Stat() (fs.FileInfo, error) { return &f.marshalFileInfo, nil }

@@ -1,4 +1,4 @@
-package marshalfs
+package marshalfs_test
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"log"
 	"reflect"
+
+	"github.com/laher/marshalfs"
 )
 
 func Example_forConfig() {
@@ -19,24 +21,26 @@ func Example_forConfig() {
 	// NOTE: production code would invoke it with os.DirFS
 	// `config := loadConfig(os.DirFS("./config"))`
 	var loadMyconfig = func(myfs fs.FS) (*myconfig, error) {
-		c, err := myfs.Open("config.json")
+		f, err := myfs.Open("config.json")
 		if err != nil {
 			return nil, err
 		}
-		ret := &myconfig{}
-
-		b, err := ioutil.ReadAll(c)
+		b, err := ioutil.ReadAll(f)
 		if err != nil {
 			return nil, err
 		}
-		json.Unmarshal(b, ret)
-		return ret, nil
+		c := &myconfig{}
+		json.Unmarshal(b, c)
+		return c, nil
 	}
 
-	// test code
+	// Set up ...
 	input := &myconfig{S: "string", I: 3}
-	mfs := MarshalFS{Marshal: json.Marshal, Files: map[string]*MarshalFile{"config.json": &MarshalFile{Value: input}}}
+	mfs := marshalfs.MarshalFS{Marshal: json.Marshal, Files: map[string]*marshalfs.MarshalFile{"config.json": marshalfs.NewFile(input)}}
+
+	// Run the code
 	output, err := loadMyconfig(mfs)
+	// Verify file is loaded OK and content matches ...
 	if err != nil {
 		log.Fatalf("unexpected error: %v", err)
 	}

@@ -25,7 +25,7 @@ func Example_forDB() {
 	// Configure a MarshalFS to query it ...
 	myfs := MarshalFS{
 		Marshal: json.Marshal,
-		Patterns: map[string]PatternGenerator{
+		Patterns: map[string]Generator{
 			"*.json": func(filename string) (*MarshalFile, error) {
 				base := filepath.Base(filename)
 				id := base[:len(base)-5]
@@ -33,7 +33,7 @@ func Example_forDB() {
 				if err != nil {
 					return nil, err
 				}
-				return &MarshalFile{Value: v}, nil
+				return &MarshalFile{value: v}, nil
 			},
 		},
 	}

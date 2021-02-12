@@ -16,17 +16,17 @@ func TestMarshalFS(t *testing.T) {
 		Marshal: json.Marshal,
 		Files: map[string]*MarshalFile{
 			f0: {
-				Value: struct {
+				value: struct {
 					Thingy []byte
 					Number int
 				}{Thingy: []byte("hello, world\n"), Number: 10},
 			},
-			f1: {Value: struct{ Info string }{"Some interesting info.\n"}},
+			f1: {value: struct{ Info string }{"Some interesting info.\n"}},
 			//glob2: {Value: struct{ Info string }{"Some globbed info.\n"}},
 		},
-		Patterns: map[string]PatternGenerator{
+		Patterns: map[string]Generator{
 			glob2: func(name string) (*MarshalFile, error) {
-				return &MarshalFile{Value: struct{ Info string }{"Some globbed info.\n"}}, nil
+				return &MarshalFile{value: struct{ Info string }{"Some globbed info.\n"}}, nil
 			},
 		},
 	}
