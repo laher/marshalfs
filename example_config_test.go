@@ -8,13 +8,16 @@ import (
 	"reflect"
 )
 
-func ExampleForConfig() {
+func Example_forConfig() {
+	// Given a config which is usually loaded from a file, ...
 	type myconfig struct {
-		I int
-		S string
+		I int    `json:"i"`
+		S string `json:"s"`
 	}
 
-	// code under test
+	// Here is the code under test
+	// NOTE: production code would invoke it with os.DirFS
+	// `config := loadConfig(os.DirFS("./config"))`
 	var loadMyconfig = func(myfs fs.FS) (*myconfig, error) {
 		c, err := myfs.Open("config.json")
 		if err != nil {
@@ -29,9 +32,6 @@ func ExampleForConfig() {
 		json.Unmarshal(b, ret)
 		return ret, nil
 	}
-
-	// production code would use os.DirFS
-	// config := loadConfig(os.DirFS("./config"))
 
 	// test code
 	input := &myconfig{S: "string", I: 3}
