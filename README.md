@@ -20,16 +20,22 @@ Reading 'files' from some other data source ...
 
 Test your config parsing without actually storing heaps of files on the filesystem ...
 
- * Example 1: testing config files
- * Example 2: injecting config data without writing to the filesystem
+```mfs := marshalfs.FS{Marshal: json.Marshal, Files: map[string]*marshalfs.File{"config.json": marshalfs.NewFile(input)}}```
+
+ * e.g.: testing config files ... See [Example_forConfig()](./example_config_test.go) for a demonstration
+ * e.g.: injecting config data without writing to the filesystem
 
 ## Database
 
- * Example 3: read from a database ...
+ * e.g. read from a database ... See [Example_forDB()](./example_db_test.go) for a demonstration
 
 ## Caveats
 
  * This implementation is NOT computationally efficient. It will repeatedly marshal your objects to bytes, any time any Read or Seek operation is called. It's much like `testing/fstest`, but worse becuase of the marshalling step.
- * fs.FS is a read-only API.
+ * `fs.FS` is a read-only API.
 
-_Caching layer to follow. I want to make a caching layer which will be cleared reasonably well, so I'll take a bit more time over it._
+## Incomplete plans
+
+ * Caching layer to follow. I want to make a caching layer which will be cleared reasonably well, so I'll take a bit more time over it._
+ * Options for creating files and filesystems
+ * Maybe - generators which can be updated on read
