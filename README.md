@@ -19,33 +19,24 @@ Test your config parsing without actually storing heaps of files on the filesyst
 ### Example 1: testing config files
 
 ```go
-// production code
-config := loadConfig(os.DirFS("./config"))
-...
+	// production code
+	// config := loadConfig(os.DirFS("./config"))
 
-// test code
-input := &config{SomeConfig: "string"}
-mfs := marshalfs.MarshalFS{Marshal: json.Marshal, Files: {"config.json": marshalfs.MarshalFile{input}}
-output := loadConfig(mfs)
-if !reflect.DeepEqual(input, output) {
-  t.Fatal("loadConfig did not parse files as expected")
-}
+	// test code
+	input := &myconfig{S: "string", I: 3}
+	mfs := MarshalFS{Marshal: json.Marshal, Files: map[string]*MarshalFile{"config.json": &MarshalFile{Value: input}}}
+	output, err := loadMyconfig(mfs)
+	if err != nil {
+		log.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(input, output) {
+		log.Fatal("loadConfig did not parse files as expected")
+	}
 ```
 
 ### Example 2: injecting config data without writing to the filesystem
 
 ```go
-// production code
-config := loadConfig(os.DirFS("./config"))
-...
-
-// test code
-input := &config{SomeConfig: "string"}
-mfs := marshalfs.MarshalFS{Marshal: json.Marshal, Files: {"config.json": marshalfs.MarshalFile{input}}
-output := loadConfig(mfs)
-if !reflect.DeepEqual(input, output) {
-  t.Fatal("loadConfig did not parse files as expected")
-}
 ```
 ## Database
 

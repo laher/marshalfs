@@ -7,7 +7,7 @@ import (
 	"testing/fstest"
 )
 
-func TestConfigFS(t *testing.T) {
+func TestMarshalFS(t *testing.T) {
 	const f0 = "your/file"
 	const f1 = "my/file"
 	const glob2 = "their/*"
