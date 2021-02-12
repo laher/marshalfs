@@ -1,4 +1,4 @@
-package marshalfs
+package marshalfs_test
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/laher/marshalfs"
 )
 
 func Example_forDB() {
@@ -23,17 +25,17 @@ func Example_forDB() {
 	}
 
 	// Configure a MarshalFS to query it ...
-	myfs := MarshalFS{
+	myfs := marshalfs.MarshalFS{
 		Marshal: json.Marshal,
-		Patterns: map[string]Generator{
-			"*.json": func(filename string) (*MarshalFile, error) {
+		Patterns: map[string]marshalfs.Generator{
+			"*.json": func(filename string) (*marshalfs.MarshalFile, error) {
 				base := filepath.Base(filename)
 				id := base[:len(base)-5]
 				v, err := query(id)
 				if err != nil {
 					return nil, err
 				}
-				return &MarshalFile{value: v}, nil
+				return marshalfs.NewFile(v), nil
 			},
 		},
 	}
