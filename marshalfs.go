@@ -10,33 +10,33 @@ import (
 	"time"
 )
 
-type Generator func(name string) (*MarshalFile, error)
+type Generator func(name string) (*File, error)
 type MarshalFunc func(i interface{}) ([]byte, error)
 
-// A MarshalFS is a simple read-only filesystem backed by objects and some serialization function.
-type MarshalFS struct {
-	Files    map[string]*MarshalFile
+// An FS is a simple read-only filesystem backed by objects and some serialization function.
+type FS struct {
+	Files    map[string]*File
 	Patterns map[string]Generator
 	Marshal  MarshalFunc
 }
 
-func NewFile(value interface{}) *MarshalFile {
-	return &MarshalFile{value: value}
+func NewFile(value interface{}) *File {
+	return &File{value: value}
 }
 
 // A MarshalFile describes a single file in a MarshalFS.
-type MarshalFile struct {
+type File struct {
 	value   interface{}
 	Mode    fs.FileMode // FileInfo.Mode
 	ModTime time.Time   // FileInfo.ModTime
 	Sys     interface{} // FileInfo.Sys
 }
 
-var _ fs.FS = MarshalFS{}
+var _ fs.FS = FS{}
 var _ fs.File = (*openMarshalFile)(nil)
 
 // Open opens the named file.
-func (mfs MarshalFS) Open(name string) (fs.File, error) {
+func (mfs FS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
@@ -100,23 +100,23 @@ func (mfs MarshalFS) Open(name string) (fs.File, error) {
 		delete(need, fi.name)
 	}
 	for name := range need {
-		list = append(list, marshalFileInfo{name, &MarshalFile{Mode: fs.ModeDir}, zeroSize})
+		list = append(list, marshalFileInfo{name, &File{Mode: fs.ModeDir}, zeroSize})
 	}
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].name < list[j].name
 	})
 
 	if file == nil {
-		file = &MarshalFile{Mode: fs.ModeDir}
+		file = &File{Mode: fs.ModeDir}
 	}
 	return &marshalDir{name, marshalFileInfo{elem, file, zeroSize}, list, 0}, nil
 }
 
-func marshalNoCache(f *MarshalFile, marshaller MarshalFunc) ([]byte, error) {
+func marshalNoCache(f *File, marshaller MarshalFunc) ([]byte, error) {
 	return marshaller(f.value)
 }
 
-func sizeNoCache(f *MarshalFile, marshaller MarshalFunc) func() int64 {
+func sizeNoCache(f *File, marshaller MarshalFunc) func() int64 {
 	return func() int64 {
 		b, _ := marshaller(f.value)
 		return int64(len(b))
@@ -135,36 +135,36 @@ func zeroSize() int64 {
 // MarshalFS exercise more code paths when used in tests.)
 type fsOnly struct{ fs.FS }
 
-func (mfs MarshalFS) ReadFile(name string) ([]byte, error) {
+func (mfs FS) ReadFile(name string) ([]byte, error) {
 	return fs.ReadFile(fsOnly{mfs}, name)
 }
 
-func (mfs MarshalFS) Stat(name string) (fs.FileInfo, error) {
+func (mfs FS) Stat(name string) (fs.FileInfo, error) {
 	return fs.Stat(fsOnly{mfs}, name)
 }
 
-func (mfs MarshalFS) ReadDir(name string) ([]fs.DirEntry, error) {
+func (mfs FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return fs.ReadDir(fsOnly{mfs}, name)
 }
 
-func (mfs MarshalFS) Glob(pattern string) ([]string, error) {
+func (mfs FS) Glob(pattern string) ([]string, error) {
 	return fs.Glob(fsOnly{mfs}, pattern)
 }
 
 type noSub struct {
-	MarshalFS
+	FS
 }
 
 func (noSub) Sub() {} // not the fs.SubFS signature
 
-func (mfs MarshalFS) Sub(dir string) (fs.FS, error) {
+func (mfs FS) Sub(dir string) (fs.FS, error) {
 	return fs.Sub(noSub{mfs}, dir)
 }
 
 // A marshalFileInfo implements fs.FileInfo and fs.DirEntry for a given map file.
 type marshalFileInfo struct {
 	name string
-	f    *MarshalFile
+	f    *File
 	size func() int64
 }
 
