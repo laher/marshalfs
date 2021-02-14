@@ -29,6 +29,45 @@ Test your config parsing without actually storing heaps of files on the filesyst
 
  * e.g. read from a database ... See [Example_forDB()](./example_db_test.go) for a demonstration
 
+## Marshalers
+
+Known usages or examples of use. ...
+
+_Please contribute by sending a PR with a link to an example._
+
+| Marshaler | Verified | Notes |
+|-----------|----------|-------|
+| [json](https://godoc.org/encoding/json) | [[x]](./example_config_test.go) | |
+| [yaml](https://godoc.org/gopkg.in/yaml.v2) | [x] | |
+| [xml](https://godoc.org/encoding/xml) | [ ] | |
+| [asn1](https://godoc.org/encoding/asn1) | [ ] | |
+| [toml](https://pkg.go.dev/github.com/pelletier/go-toml) | [ ] | |
+| [toml](https://github.com/BurntSushi/toml) | [ ] | |
+| [ini](https://github.com/go-ini/ini) | [ ] | |
+| [csv](https://pkg.go.dev/github.com/jszwec/csvutil) | [ ] | |
+
+## Generators
+
+You can use any data source to back a MarshalFS. Here are some data sources with (eventually) links to usage in conjunction with MarshalFS ...
+
+_Please contribute by sending a PR with a link to an example._
+
+| Marshaler | Verified | Notes |
+|-----------|----------|-------|
+| [db](https://github.com/jmoiron/sqlx) | [ ] | |
+| [dynamodb](https://docs.aws.amazon.com/sdk-for-go/api/service/dynamodb/dynamodbattribute/#Marshal) | [ ] | |
+| [bigquery](https://godoc.org/cloud.google.com/go/bigquery) | [ ] | |
+| [reform](https://godoc.org/gopkg.in/reform.v1) | [ ] | |
+| [datastore](https://godoc.org/cloud.google.com/go/datastore) | [ ] | |
+| [spanner](https://godoc.org/cloud.google.com/go/spanner) | [ ] | |
+| [mongodb](https://godoc.org/labix.org/v2/mgo/bson) | [ ] | |
+| [mongodb](https://godoc.org/go.mongodb.org/mongo-driver/bson/bsoncodec) | [ ] | |
+| [gorm](https://godoc.org/github.com/jinzhu/gorm) | [ ] | |
+| [validate](https://github.com/go-playground/validator) | [ ] | |
+| [mapstructure](https://godoc.org/github.com/mitchellh/mapstructure) | [ ] | |
+| [protobuf](https://github.com/golang/protobuf) | [ ] | |
+| [s3](https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3) | [ ] | See S3FS, below |
+
 ## Caveats
 
  * This implementation is NOT computationally efficient. It will repeatedly marshal your objects to bytes, any time any Read or Seek operation is called. It's much like `testing/fstest`, but worse becuase of the marshalling step.
@@ -37,5 +76,12 @@ Test your config parsing without actually storing heaps of files on the filesyst
 ## Incomplete plans
 
  * Caching layer to follow. I want to make a caching layer which will be cleared reasonably well, so I'll take a bit more time over it._
- * Options for creating files and filesystems
+ * Options for New*() for files and filesystems
+ * Maybe copy chainfs into here ...
  * Maybe - generators which can be updated on read
+
+## Related Works
+
+ * [testfs](https://tip.golang.org/pkg/testing/fstest/) contains a memory-map implementation
+ * [s3fs](https://github.com/jszwec/s3fs) is a fs.FS backed by the AWS S3 client
+
