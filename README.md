@@ -12,11 +12,10 @@ Testing, mostly.
 
 I can think of a bunch of uses for a read-only filesystem.
 
-Testing config parsing. Injecting config into tests.
+ * Testing config parsing. Injecting config into tests.
+ * Reading 'files' from some other data source ...
 
-Reading 'files' from some other data source ...
-
-## Config
+### For testing Config
 
 Test your config parsing without actually storing heaps of files on the filesystem ...
 
@@ -25,7 +24,7 @@ Test your config parsing without actually storing heaps of files on the filesyst
  * e.g.: testing config files ... See [Example_forConfig()](./example_config_test.go) for a demonstration
  * e.g.: injecting config data without writing to the filesystem
 
-## Database
+### For representing a data source as files
 
  * e.g. read from a database ... See [Example_forDB()](./example_db_test.go) for a demonstration
 
@@ -84,4 +83,5 @@ _Please contribute by sending a PR with a link to an example._
 
  * [testfs](https://tip.golang.org/pkg/testing/fstest/) contains a memory-map implementation
  * [s3fs](https://github.com/jszwec/s3fs) is a fs.FS backed by the AWS S3 client
+ * [mergefs](https://github.com/laher/mergefs) merge `fs.FS` filesystems
 
