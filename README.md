@@ -75,13 +75,14 @@ _Please contribute by sending a PR with a link to an example._
 ## Incomplete plans
 
  * Caching layer to follow. I want to make a caching layer which will be cleared reasonably well, so I'll take a bit more time over it._
- * Options for New*() for files and filesystems
- * Maybe copy chainfs into here ...
+ * ~Options for New*() for files and filesystems~ - done in principle
+ * Maybe copy mergefs into here?
  * Maybe - generators which can be updated on read
 
 ## Related Works
 
- * [testfs](https://tip.golang.org/pkg/testing/fstest/) contains a memory-map implementation
+ * [dirfs](https://tip.golang.org/pkg/os/) contains `os.DirFS` - this 'default' implementation is backed by an actual filesystem.
+ * [testfs](https://tip.golang.org/pkg/testing/fstest/) contains a memory-map implementation and a testing tool. The standard library contains a few other fs.FS implementations (like 'zip')
  * [s3fs](https://github.com/jszwec/s3fs) is a fs.FS backed by the AWS S3 client
- * [mergefs](https://github.com/laher/mergefs) merge `fs.FS` filesystems
-
+ * An earlier work, [afero](https://github.com/spf13/afero) is a filesystem abstraction for Go, which has been the standard for filesystem abstractions up until go1.15. It's read-write, and it's a mature project. The interfaces look very different (big with lots of methods), so it's not really compatible.
+ * [mergefs](https://github.com/laher/mergefs) merge `fs.FS` filesystems together so that your FS can easily read from multiple sources.
