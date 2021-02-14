@@ -64,7 +64,7 @@ _Please contribute by sending a PR with a link to an example._
 
 | Marshaler | Verified | Notes |
 |-----------|----------|-------|
-| [db](https://github.com/jmoiron/sqlx) | [ ] | |
+| [db (sqlx)](https://github.com/jmoiron/sqlx) | [[x]](https://github.com/laher/marshalfs-examples) | |
 | [dynamodb](https://docs.aws.amazon.com/sdk-for-go/api/service/dynamodb/dynamodbattribute/#Marshal) | [ ] | |
 | [bigquery](https://godoc.org/cloud.google.com/go/bigquery) | [ ] | |
 | [reform](https://godoc.org/gopkg.in/reform.v1) | [ ] | |
