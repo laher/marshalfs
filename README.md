@@ -8,7 +8,7 @@ marshalfs only works with Go 1.16+ (Go 1.16 is in Beta right now).
 
 ## Why for?
 
-Testing, mostly.
+For testing, and for easily mapping data sources to files.
 
 I can think of a bunch of uses for a read-only filesystem.
 
