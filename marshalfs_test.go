@@ -13,8 +13,8 @@ func TestMarshalFS(t *testing.T) {
 	const glob2 = "their/*"
 	const f2 = "their/file"
 	m := &FS{
-		Marshal: json.Marshal,
-		Files: map[string]*File{
+		defaultMarshaler: json.Marshal,
+		files: map[string]*File{
 			f0: {
 				value: struct {
 					Thingy []byte
@@ -24,7 +24,7 @@ func TestMarshalFS(t *testing.T) {
 			f1: {value: struct{ Info string }{"Some interesting info.\n"}},
 			//glob2: {Value: struct{ Info string }{"Some globbed info.\n"}},
 		},
-		Patterns: map[string]Generator{
+		patterns: map[string]Generator{
 			glob2: func(name string) (*File, error) {
 				return &File{value: struct{ Info string }{"Some globbed info.\n"}}, nil
 			},

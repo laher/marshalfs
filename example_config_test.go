@@ -36,7 +36,7 @@ func Example_forConfig() {
 
 	// Set up ...
 	input := &myconfig{S: "string", I: 3}
-	mfs := marshalfs.FS{Marshal: json.Marshal, Files: map[string]*marshalfs.File{"config.json": marshalfs.NewFile(input)}}
+	mfs := marshalfs.New(json.Marshal, marshalfs.WithFiles(map[string]*marshalfs.File{"config.json": marshalfs.NewFile(input)}))
 
 	// Run the code
 	output, err := loadMyconfig(mfs)
