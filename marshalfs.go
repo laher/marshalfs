@@ -10,41 +10,26 @@ import (
 	"time"
 )
 
-type Generator func(name string) (*File, error)
+type Generator func(name string) (interface{}, error)
 type MarshalFunc func(i interface{}) ([]byte, error)
-type FSOption func(*FS)
 type FileOption func(*File)
+type FileMap map[string]*File
 
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
-	files            map[string]*File
-	patterns         map[string]Generator
+	files            FileMap
 	defaultMarshaler MarshalFunc
 }
 
-func New(defaultMarshaler MarshalFunc, opts ...FSOption) *FS {
-	mfs := &FS{defaultMarshaler: defaultMarshaler}
-	for _, opt := range opts {
-		opt(mfs)
-	}
+func New(defaultMarshaler MarshalFunc, files FileMap) *FS {
+	mfs := &FS{defaultMarshaler: defaultMarshaler, files: files}
 	return mfs
-}
-
-func WithFiles(files map[string]*File) FSOption {
-	return func(mfs *FS) {
-		mfs.files = files
-	}
-}
-
-func WithPatterns(patterns map[string]Generator) FSOption {
-	return func(mfs *FS) {
-		mfs.patterns = patterns
-	}
 }
 
 // A MarshalFile describes a single file in a MarshalFS.
 type File struct {
 	value           interface{}
+	generator       Generator
 	Mode            fs.FileMode // FileInfo.Mode
 	ModTime         time.Time   // FileInfo.ModTime
 	Sys             interface{} // FileInfo.Sys
@@ -53,6 +38,14 @@ type File struct {
 
 func NewFile(value interface{}, opts ...FileOption) *File {
 	f := &File{value: value}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
+}
+
+func NewFileGenerator(generator Generator, opts ...FileOption) *File {
+	f := &File{generator: generator}
 	for _, opt := range opts {
 		opt(f)
 	}
@@ -89,20 +82,27 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	file, ok := mfs.files[name]
 	if !ok {
 		// globbable?
-		for k, v := range mfs.patterns {
+		for k, v := range mfs.files {
 			if ok, err := filepath.Match(k, name); ok && err == nil {
-				file, err = v(name)
-				if err != nil {
-					return nil, &fs.PathError{Op: "open", Path: name, Err: err}
-				}
+				file = v
+
 				break
 			}
 		}
 	}
+
 	if file != nil && file.Mode&fs.ModeDir == 0 {
 		marshaler := mfs.defaultMarshaler
 		if file.customMarshaler != nil {
 			marshaler = file.customMarshaler
+		}
+
+		if file.value == nil {
+			var err error
+			file.value, err = file.generator(name)
+			if err != nil {
+				return nil, &fs.PathError{Op: "open", Path: name, Err: err}
+			}
 		}
 		// Ordinary file
 		return &openMarshalFile{

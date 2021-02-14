@@ -27,7 +27,7 @@ Test your config parsing without actually storing 'fixture' files on the filesys
 
 ```go
   mfs := marshalfs.New(json.Marshal,
-    marshalfs.WithFiles(map[string]*marshalfs.File{
+    marshalfs.WithFiles(marshalfs.FileMap{
       "config.json": marshalfs.NewFile(&myconfig{Env: "production", I: 3}),
       "config-staging.json": marshalfs.NewFile(&myconfig{Env: "staging", I: 2}),
       "config.yaml": marshalfs.NewFile(&myconfig{S: "production", I: 3}, marshalfs.WithCustomMarshaler(yaml.Marshal)),

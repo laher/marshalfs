@@ -25,17 +25,17 @@ func Example_forDB() {
 	}
 
 	// Configure a MarshalFS to query it ...
-	myfs := marshalfs.New(json.Marshal, marshalfs.WithPatterns(map[string]marshalfs.Generator{
-		"*.json": func(filename string) (*marshalfs.File, error) {
+	myfs := marshalfs.New(json.Marshal, marshalfs.FileMap{
+		"*.json": marshalfs.NewFileGenerator(func(filename string) (interface{}, error) {
 			base := filepath.Base(filename)
 			id := base[:len(base)-5]
 			v, err := query(id)
 			if err != nil {
 				return nil, err
 			}
-			return marshalfs.NewFile(v), nil
-		},
-	}))
+			return v, nil
+		}),
+	})
 
 	// Verify that one file doesn't exist
 	_, err := myfs.Open("z.json")
