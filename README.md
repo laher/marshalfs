@@ -2,31 +2,43 @@
 
 Simulate a readonly filesystem, by serializing objects and/or functions, linked to file paths.
 
-marshalfs only works with Go 1.16+ (Go 1.16 is in Beta right now).
+With `marshalfs`, you can back your 'filesystem' with in-memory objects, or you can alternatively plug it in to external data sources (see 'Caveats', below).
+
+`marshalfs` only works with Go 1.16+ (Go 1.16 is in Beta right now).
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/laher/marshalfs.svg)](https://pkg.go.dev/github.com/laher/marshalfs)
 
 ## Why for?
 
-For testing, and for easily mapping data sources to files.
+For testing, and for easily accessing data sources as files.
 
 I can think of a bunch of uses for a read-only filesystem.
 
  * Testing config parsing. Injecting config into tests.
- * Reading 'files' from some other data source ...
+ * Reading 'files' from some other data source, as though it were a file.
+  * Optionally, combine these 'files' with a real filesystem, using [mergefs](https://github.com/laher/mergefs).
 
 ### For testing Config
 
-Test your config parsing without actually storing heaps of files on the filesystem ...
-
-```mfs := marshalfs.FS{Marshal: json.Marshal, Files: map[string]*marshalfs.File{"config.json": marshalfs.NewFile(input)}}```
+Test your config parsing without actually storing 'fixture' files on the filesystem. ...
 
  * e.g.: testing config files ... See [Example_forConfig()](./example_config_test.go) for a demonstration
- * e.g.: injecting config data without writing to the filesystem
+ * e.g.2: injecting config data without writing to the filesystem:
+
+```go
+  mfs := marshalfs.New(json.Marshal,
+    marshalfs.WithFiles(map[string]*marshalfs.File{
+      "config.json": marshalfs.NewFile(&myconfig{Env: "production", I: 3}),
+      "config-staging.json": marshalfs.NewFile(&myconfig{Env: "staging", I: 2}),
+      "config.yaml": marshalfs.NewFile(&myconfig{S: "production", I: 3}, marshalfs.WithCustomMarshaler(yaml.Marshal)),
+    })
+```
 
 ### For representing a data source as files
 
- * e.g. read from a database ... See [Example_forDB()](./example_db_test.go) for a demonstration
+To use an external, dynamic data source, you'll need to write a `marshalfs.Generator`
+
+ * e.g. read from a database ... See [Example_forDB()](./example_db_test.go) for a demonstration with a dummy database.
 
 ## Marshalers
 
