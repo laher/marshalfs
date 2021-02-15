@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-type Generator func(name string) (interface{}, error)
+type GeneratorFunc func(name string) (interface{}, error)
 type MarshalFunc func(i interface{}) ([]byte, error)
 type FileOption func(*File)
 
@@ -29,21 +29,24 @@ type static struct {
 	path  string
 	value interface{}
 }
-type dynamic struct {
+type generating struct {
 	path      string
-	generator Generator
+	generator GeneratorFunc
 }
 
-// A MarshalFile describes a single file in a MarshalFS.
+// File describes a file or group of files in a MarshalFS. Use NewFile or NewDynamicFile to create a file
 type File struct {
-	s               *static
-	d               *dynamic
+	// oneOf static|dynamic
+	s *static
+	g *generating
+
 	Mode            fs.FileMode // FileInfo.Mode
 	ModTime         time.Time   // FileInfo.ModTime
 	Sys             interface{} // FileInfo.Sys
 	customMarshaler MarshalFunc
 }
 
+// NewFile creates a new File
 func NewFile(path string, value interface{}, opts ...FileOption) *File {
 	f := &File{s: &static{path: path, value: value}}
 	for _, opt := range opts {
@@ -52,8 +55,8 @@ func NewFile(path string, value interface{}, opts ...FileOption) *File {
 	return f
 }
 
-func NewFileGenerator(glob string, generator Generator, opts ...FileOption) *File {
-	f := &File{d: &dynamic{path: glob, generator: generator}}
+func NewFileGenerator(glob string, generator GeneratorFunc, opts ...FileOption) *File {
+	f := &File{g: &generating{path: glob, generator: generator}}
 	for _, opt := range opts {
 		opt(f)
 	}
@@ -94,8 +97,8 @@ func (mfs FS) Open(name string) (fs.File, error) {
 				file = f
 				break
 			}
-		} else if f.d != nil {
-			if ok, err := filepath.Match(f.d.path, name); ok && err == nil {
+		} else if f.g != nil {
+			if ok, err := filepath.Match(f.g.path, name); ok && err == nil {
 				file = f
 				break
 			}
@@ -108,9 +111,9 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		}
 
 		var value interface{}
-		if file.d != nil {
+		if file.g != nil {
 			var err error
-			value, err = file.d.generator(name)
+			value, err = file.g.generator(name)
 			if err != nil {
 				return nil, &fs.PathError{Op: "open", Path: name, Err: err}
 			}
@@ -204,6 +207,9 @@ func zeroSize() int64 {
 	return 0
 }
 
+/*
+ TODO should we introduce ReadFile/Stat/ReadDir/etc?
+ Seems unclear for 'dynamic' files ...
 // fsOnly is a wrapper that hides all but the fs.FS methods,
 // to avoid an infinite recursion when implementing special
 // methods in terms of helpers that would use them.
@@ -237,7 +243,7 @@ func (noSub) Sub() {} // not the fs.SubFS signature
 func (mfs FS) Sub(dir string) (fs.FS, error) {
 	return fs.Sub(noSub{mfs}, dir)
 }
-
+*/
 // A marshalFileInfo implements fs.FileInfo and fs.DirEntry for a given map file.
 type marshalFileInfo struct {
 	name string

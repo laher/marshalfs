@@ -32,7 +32,7 @@ func TestMarshalFS(t *testing.T) {
 			},
 			//glob2: {Value: struct{ Info string }{"Some globbed info.\n"}},
 			{
-				d: &dynamic{
+				g: &generating{
 					path: glob2,
 					generator: func(name string) (interface{}, error) {
 						return struct{ Info string }{"Some globbed info.\n"}, nil
