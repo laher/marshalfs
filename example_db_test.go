@@ -25,8 +25,8 @@ func Example_forDB() {
 	}
 
 	// Configure a MarshalFS to query it ...
-	myfs := marshalfs.New(json.Marshal, marshalfs.FileMap{
-		"*.json": marshalfs.NewFileGenerator(func(filename string) (interface{}, error) {
+	myfs := marshalfs.New(json.Marshal,
+		marshalfs.NewFileGenerator("*.json", func(filename string) (interface{}, error) {
 			base := filepath.Base(filename)
 			id := base[:len(base)-5]
 			v, err := query(id)
@@ -34,8 +34,7 @@ func Example_forDB() {
 				return nil, err
 			}
 			return v, nil
-		}),
-	})
+		}))
 
 	// Verify that one file doesn't exist
 	_, err := myfs.Open("z.json")
