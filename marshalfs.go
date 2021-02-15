@@ -25,11 +25,19 @@ func New(defaultMarshaler MarshalFunc, files ...*File) *FS {
 	return mfs
 }
 
+type static struct {
+	path  string
+	value interface{}
+}
+type dynamic struct {
+	path      string
+	generator Generator
+}
+
 // A MarshalFile describes a single file in a MarshalFS.
 type File struct {
-	path            string
-	value           interface{}
-	generator       Generator
+	s               *static
+	d               *dynamic
 	Mode            fs.FileMode // FileInfo.Mode
 	ModTime         time.Time   // FileInfo.ModTime
 	Sys             interface{} // FileInfo.Sys
@@ -37,7 +45,7 @@ type File struct {
 }
 
 func NewFile(path string, value interface{}, opts ...FileOption) *File {
-	f := &File{path: path, value: value}
+	f := &File{s: &static{path: path, value: value}}
 	for _, opt := range opts {
 		opt(f)
 	}
@@ -45,7 +53,7 @@ func NewFile(path string, value interface{}, opts ...FileOption) *File {
 }
 
 func NewFileGenerator(glob string, generator Generator, opts ...FileOption) *File {
-	f := &File{path: glob, generator: generator}
+	f := &File{d: &dynamic{path: glob, generator: generator}}
 	for _, opt := range opts {
 		opt(f)
 	}
@@ -81,12 +89,16 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	}
 	var file *File
 	for _, f := range mfs.files {
-		if name == f.path {
-			file = f
-			break
-		} else if ok, err := filepath.Match(f.path, name); ok && err == nil {
-			file = f
-			break
+		if f.s != nil {
+			if name == f.s.path {
+				file = f
+				break
+			}
+		} else if f.d != nil {
+			if ok, err := filepath.Match(f.d.path, name); ok && err == nil {
+				file = f
+				break
+			}
 		}
 	}
 	if file != nil && file.Mode&fs.ModeDir == 0 {
@@ -95,20 +107,24 @@ func (mfs FS) Open(name string) (fs.File, error) {
 			marshaler = file.customMarshaler
 		}
 
-		if file.value == nil {
+		var value interface{}
+		if file.d != nil {
 			var err error
-			file.value, err = file.generator(name)
+			value, err = file.d.generator(name)
 			if err != nil {
 				return nil, &fs.PathError{Op: "open", Path: name, Err: err}
 			}
+		} else if file.s != nil {
+			value = file.s.value
 		}
 		// Ordinary file
 		return &openMarshalFile{
-			path: name,
+			path:  name,
+			value: value,
 			marshalFileInfo: marshalFileInfo{
 				name: path.Base(name),
 				f:    file,
-				size: sizeNoCache(file, marshaler),
+				size: sizeNoCache(value, marshaler),
 			},
 			offset:     0,
 			marshaller: marshaler,
@@ -125,25 +141,33 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	if name == "." {
 		elem = "."
 		for _, f := range mfs.files {
-			i := strings.Index(f.path, "/")
-			if i < 0 {
-				list = append(list, marshalFileInfo{f.path, f, sizeNoCache(f, mfs.defaultMarshaler)})
+			if f.s != nil {
+				i := strings.Index(f.s.path, "/")
+				if i < 0 {
+					list = append(list, marshalFileInfo{f.s.path, f, sizeNoCache(f.s.value, mfs.defaultMarshaler)})
+				} else {
+					need[f.s.path[:i]] = true
+				}
 			} else {
-				need[f.path[:i]] = true
+				// TODO - directory handling for dynamic files
 			}
 		}
 	} else {
 		elem = name[strings.LastIndex(name, "/")+1:]
 		prefix := name + "/"
 		for _, f := range mfs.files {
-			if strings.HasPrefix(f.path, prefix) {
-				felem := f.path[len(prefix):]
-				i := strings.Index(felem, "/")
-				if i < 0 {
-					list = append(list, marshalFileInfo{felem, f, sizeNoCache(f, mfs.defaultMarshaler)})
-				} else {
-					need[f.path[len(prefix):len(prefix)+i]] = true
+			if f.s != nil {
+				if strings.HasPrefix(f.s.path, prefix) {
+					felem := f.s.path[len(prefix):]
+					i := strings.Index(felem, "/")
+					if i < 0 {
+						list = append(list, marshalFileInfo{felem, f, sizeNoCache(f.s.value, mfs.defaultMarshaler)})
+					} else {
+						need[f.s.path[len(prefix):len(prefix)+i]] = true
+					}
 				}
+			} else {
+				// TODO - directory handling for dynamic files
 			}
 		}
 		// If the directory name is not in the map,
@@ -169,13 +193,9 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	return &marshalDir{name, marshalFileInfo{elem, file, zeroSize}, list, 0}, nil
 }
 
-func marshalNoCache(f *File, marshaller MarshalFunc) ([]byte, error) {
-	return marshaller(f.value)
-}
-
-func sizeNoCache(f *File, marshaller MarshalFunc) func() int64 {
+func sizeNoCache(value interface{}, marshaller MarshalFunc) func() int64 {
 	return func() int64 {
-		b, _ := marshaller(f.value)
+		b, _ := marshaller(value)
 		return int64(len(b))
 	}
 }
@@ -237,7 +257,8 @@ func (i *marshalFileInfo) Info() (fs.FileInfo, error) { return i, nil }
 
 // An openMarshalFile is a regular (non-directory) fs.File open for reading.
 type openMarshalFile struct {
-	path string
+	path  string
+	value interface{}
 	marshalFileInfo
 	offset     int64
 	marshaller func(i interface{}) ([]byte, error)
@@ -245,13 +266,13 @@ type openMarshalFile struct {
 
 // TODO cache bytes?
 func (f *openMarshalFile) Marshal() ([]byte, error) {
-	if f.marshalFileInfo.f.value == nil {
+	if f.value == nil {
 		return nil, nil
 	}
 	if f.f.customMarshaler != nil {
-		return f.f.customMarshaler(f.marshalFileInfo.f.value)
+		return f.f.customMarshaler(f.value)
 	}
-	return f.marshaller(f.marshalFileInfo.f.value)
+	return f.marshaller(f.value)
 }
 
 func (f *openMarshalFile) Stat() (fs.FileInfo, error) { return &f.marshalFileInfo, nil }
