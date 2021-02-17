@@ -135,17 +135,21 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		case *FileDef:
 			value = ft.value
 		}
+
+		data, err := marshaler(value)
+		if err != nil {
+			return nil, &fs.PathError{Op: "open", Path: name, Err: err}
+		}
 		// Ordinary file
 		return &openMarshalFile{
-			path:  name,
-			value: value,
+			path: name,
+			data: data,
 			marshalFileInfo: marshalFileInfo{
 				name: path.Base(name),
 				f:    file.Common(),
 				size: sizeNoCache(value, marshaler),
 			},
-			offset:     0,
-			marshaller: marshaler,
+			offset: 0,
 		}, nil
 	}
 
@@ -280,22 +284,16 @@ func (i *marshalFileInfo) Info() (fs.FileInfo, error) { return i, nil }
 
 // An openMarshalFile is a regular (non-directory) fs.File open for reading.
 type openMarshalFile struct {
-	path  string
-	value interface{}
+	path string
+	//value interface{}
+	data []byte
 	marshalFileInfo
-	offset     int64
-	marshaller func(i interface{}) ([]byte, error)
+	offset int64
 }
 
 // TODO cache bytes?
 func (f *openMarshalFile) Marshal() ([]byte, error) {
-	if f.value == nil {
-		return nil, nil
-	}
-	if f.f.customMarshaler != nil {
-		return f.f.customMarshaler(f.value)
-	}
-	return f.marshaller(f.value)
+	return f.data, nil
 }
 
 func (f *openMarshalFile) Stat() (fs.FileInfo, error) { return &f.marshalFileInfo, nil }
