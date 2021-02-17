@@ -14,15 +14,15 @@ func TestMarshalFS(t *testing.T) {
 	const f2 = "their/file"
 	m := &FS{
 		defaultMarshaler: json.Marshal,
-		files: []File{
-			&FileDef{
+		files: []FileDef{
+			&ObjectFile{
 				path: f0,
 				value: struct {
 					Thingy []byte
 					Number int
 				}{Thingy: []byte("hello, world\n"), Number: 10},
 			},
-			&FileDef{
+			&ObjectFile{
 				path:  f1,
 				value: struct{ Info string }{"Some interesting info.\n"},
 			},
