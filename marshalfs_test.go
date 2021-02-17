@@ -14,29 +14,23 @@ func TestMarshalFS(t *testing.T) {
 	const f2 = "their/file"
 	m := &FS{
 		defaultMarshaler: json.Marshal,
-		files: []*File{
-			{
-				s: &static{
-					path: f0,
-					value: struct {
-						Thingy []byte
-						Number int
-					}{Thingy: []byte("hello, world\n"), Number: 10},
-				},
+		files: []File{
+			&FileDef{
+				path: f0,
+				value: struct {
+					Thingy []byte
+					Number int
+				}{Thingy: []byte("hello, world\n"), Number: 10},
 			},
-			{
-				s: &static{
-					path:  f1,
-					value: struct{ Info string }{"Some interesting info.\n"},
-				},
+			&FileDef{
+				path:  f1,
+				value: struct{ Info string }{"Some interesting info.\n"},
 			},
 			//glob2: {Value: struct{ Info string }{"Some globbed info.\n"}},
-			{
-				g: &generating{
-					path: glob2,
-					generator: func(name string) (interface{}, error) {
-						return struct{ Info string }{"Some globbed info.\n"}, nil
-					},
+			&FileGen{
+				path: glob2,
+				generator: func(name string) (interface{}, error) {
+					return struct{ Info string }{"Some globbed info.\n"}, nil
 				},
 			},
 		},

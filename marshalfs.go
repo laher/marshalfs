@@ -12,71 +12,84 @@ import (
 
 type GeneratorFunc func(name string) (interface{}, error)
 type MarshalFunc func(i interface{}) ([]byte, error)
-type FileOption func(*File)
+type FileOption func(*FileCommon)
 
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
-	files            []*File
+	files            []File
 	defaultMarshaler MarshalFunc
 }
 
-func New(defaultMarshaler MarshalFunc, files ...*File) *FS {
+func New(defaultMarshaler MarshalFunc, files ...File) *FS {
 	mfs := &FS{defaultMarshaler: defaultMarshaler, files: files}
 	return mfs
 }
 
-type static struct {
-	path  string
-	value interface{}
-}
-type generating struct {
-	path      string
-	generator GeneratorFunc
+type File interface {
+	Common() FileCommon
 }
 
 // File describes a file or group of files in a MarshalFS. Use NewFile or NewDynamicFile to create a file
-type File struct {
+type FileDef struct {
 	// oneOf static|dynamic
-	s *static
-	g *generating
+	path  string
+	value interface{}
+	FileCommon
+}
 
+func (f *FileDef) Common() FileCommon {
+	return f.FileCommon
+}
+
+type FileCommon struct {
 	Mode            fs.FileMode // FileInfo.Mode
 	ModTime         time.Time   // FileInfo.ModTime
 	Sys             interface{} // FileInfo.Sys
 	customMarshaler MarshalFunc
 }
 
+type FileGen struct {
+	// oneOf static|dynamic
+	path      string
+	generator GeneratorFunc
+	FileCommon
+}
+
+func (f *FileGen) Common() FileCommon {
+	return f.FileCommon
+}
+
 // NewFile creates a new File
-func NewFile(path string, value interface{}, opts ...FileOption) *File {
-	f := &File{s: &static{path: path, value: value}}
+func NewFile(path string, value interface{}, opts ...FileOption) File {
+	f := &FileDef{path: path, value: value}
 	for _, opt := range opts {
-		opt(f)
+		opt(&f.FileCommon)
 	}
 	return f
 }
 
-func NewFileGenerator(glob string, generator GeneratorFunc, opts ...FileOption) *File {
-	f := &File{g: &generating{path: glob, generator: generator}}
+func NewFileGenerator(glob string, generator GeneratorFunc, opts ...FileOption) File {
+	f := &FileGen{path: glob, generator: generator}
 	for _, opt := range opts {
-		opt(f)
+		opt(&f.FileCommon)
 	}
 	return f
 }
 
 func WithMode(mode fs.FileMode) FileOption {
-	return func(f *File) {
+	return func(f *FileCommon) {
 		f.Mode = mode
 	}
 }
 
 func WithModTime(t time.Time) FileOption {
-	return func(f *File) {
+	return func(f *FileCommon) {
 		f.ModTime = t
 	}
 }
 
 func WithCustomMarshaler(mf MarshalFunc) FileOption {
-	return func(f *File) {
+	return func(f *FileCommon) {
 		f.customMarshaler = mf
 	}
 }
@@ -90,35 +103,37 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
-	var file *File
+	var file File
 	for _, f := range mfs.files {
-		if f.s != nil {
-			if name == f.s.path {
+		switch ft := f.(type) {
+		case *FileDef:
+			if name == ft.path {
 				file = f
 				break
 			}
-		} else if f.g != nil {
-			if ok, err := filepath.Match(f.g.path, name); ok && err == nil {
+		case *FileGen:
+			if ok, err := filepath.Match(ft.path, name); ok && err == nil {
 				file = f
 				break
 			}
 		}
 	}
-	if file != nil && file.Mode&fs.ModeDir == 0 {
+	if file != nil && file.Common().Mode&fs.ModeDir == 0 {
 		marshaler := mfs.defaultMarshaler
-		if file.customMarshaler != nil {
-			marshaler = file.customMarshaler
+		if file.Common().customMarshaler != nil {
+			marshaler = file.Common().customMarshaler
 		}
 
 		var value interface{}
-		if file.g != nil {
+		switch ft := file.(type) {
+		case *FileGen:
 			var err error
-			value, err = file.g.generator(name)
+			value, err = ft.generator(name)
 			if err != nil {
 				return nil, &fs.PathError{Op: "open", Path: name, Err: err}
 			}
-		} else if file.s != nil {
-			value = file.s.value
+		case *FileDef:
+			value = ft.value
 		}
 		// Ordinary file
 		return &openMarshalFile{
@@ -126,7 +141,7 @@ func (mfs FS) Open(name string) (fs.File, error) {
 			value: value,
 			marshalFileInfo: marshalFileInfo{
 				name: path.Base(name),
-				f:    file,
+				f:    file.Common(),
 				size: sizeNoCache(value, marshaler),
 			},
 			offset:     0,
@@ -144,14 +159,15 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	if name == "." {
 		elem = "."
 		for _, f := range mfs.files {
-			if f.s != nil {
-				i := strings.Index(f.s.path, "/")
+			switch ft := f.(type) {
+			case *FileDef:
+				i := strings.Index(ft.path, "/")
 				if i < 0 {
-					list = append(list, marshalFileInfo{f.s.path, f, sizeNoCache(f.s.value, mfs.defaultMarshaler)})
+					list = append(list, marshalFileInfo{ft.path, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
 				} else {
-					need[f.s.path[:i]] = true
+					need[ft.path[:i]] = true
 				}
-			} else {
+			case *FileGen:
 				// TODO - directory handling for dynamic files
 			}
 		}
@@ -159,17 +175,18 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		elem = name[strings.LastIndex(name, "/")+1:]
 		prefix := name + "/"
 		for _, f := range mfs.files {
-			if f.s != nil {
-				if strings.HasPrefix(f.s.path, prefix) {
-					felem := f.s.path[len(prefix):]
+			switch ft := f.(type) {
+			case *FileDef:
+				if strings.HasPrefix(ft.path, prefix) {
+					felem := ft.path[len(prefix):]
 					i := strings.Index(felem, "/")
 					if i < 0 {
-						list = append(list, marshalFileInfo{felem, f, sizeNoCache(f.s.value, mfs.defaultMarshaler)})
+						list = append(list, marshalFileInfo{felem, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
 					} else {
-						need[f.s.path[len(prefix):len(prefix)+i]] = true
+						need[ft.path[len(prefix):len(prefix)+i]] = true
 					}
 				}
-			} else {
+			case *FileGen:
 				// TODO - directory handling for dynamic files
 			}
 		}
@@ -184,16 +201,16 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		delete(need, fi.name)
 	}
 	for name := range need {
-		list = append(list, marshalFileInfo{name, &File{Mode: fs.ModeDir}, zeroSize})
+		list = append(list, marshalFileInfo{name, FileCommon{Mode: fs.ModeDir}, zeroSize})
 	}
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].name < list[j].name
 	})
 
 	if file == nil {
-		file = &File{Mode: fs.ModeDir}
+		file = &FileDef{FileCommon: FileCommon{Mode: fs.ModeDir}}
 	}
-	return &marshalDir{name, marshalFileInfo{elem, file, zeroSize}, list, 0}, nil
+	return &marshalDir{name, marshalFileInfo{elem, file.Common(), zeroSize}, list, 0}, nil
 }
 
 func sizeNoCache(value interface{}, marshaller MarshalFunc) func() int64 {
@@ -247,7 +264,7 @@ func (mfs FS) Sub(dir string) (fs.FS, error) {
 // A marshalFileInfo implements fs.FileInfo and fs.DirEntry for a given map file.
 type marshalFileInfo struct {
 	name string
-	f    *File
+	f    FileCommon
 	size func() int64
 }
 
