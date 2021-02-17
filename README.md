@@ -4,18 +4,21 @@ Simulate a readonly filesystem, by serializing objects and/or functions, linked 
 
 With `marshalfs`, you can back your 'filesystem' with in-memory objects, or you can alternatively plug it in to external data sources (see 'Caveats', below).
 
-`marshalfs` only works with Go 1.16+ (Go 1.16 is in Beta right now).
+`marshalfs` only works with Go 1.16+.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/laher/marshalfs.svg)](https://pkg.go.dev/github.com/laher/marshalfs)
 
 ## Why for?
 
-For testing, and for easily accessing data sources as files.
+Haven't you heard, [everything is a file](https://en.wikipedia.org/wiki/Everything_is_a_file)?
+
+Mainly, for testing, and for accessing data sources as files.
 
 I can think of a bunch of uses for a read-only filesystem.
 
  * Testing config parsing. Injecting config into tests.
- * Reading 'files' from some other data source, as though it were a file.
+ * Imitate a serial interface?
+ * Reading 'files' from a completely different data source, as though it were a file.
   * Optionally, combine these 'files' with a real filesystem, using [mergefs](https://github.com/laher/mergefs).
 
 ### For testing Config
@@ -37,7 +40,22 @@ Test your config parsing without actually storing 'fixture' files on the filesys
 
 To use an external, dynamic data source, you'll need to write a `marshalfs.Generator`
 
- * e.g. read from a database ... See [Example_forDB()](./example_db_test.go) for a demonstration with a dummy database.
+ * e.g. read from a 'database' ... See [Example_forDB()](./example_db_test.go) for a demonstration with a dummy database.
+ * e.g.2: see [marshalfs-examples](https://github.com/laher/marshalfs-examples) for a [postgres-backed filesystem](https://github.com/laher/marshalfs-examples/blob/619720c38c44a4513032f7034d256e58ef789d0c/sqlx_test.go#L52-L77).
+
+```go
+	myfs := marshalfs.New(json.Marshal,
+		marshalfs.NewFileGenerator("*.json", func(filename string) (interface{}, error) {
+			base := filepath.Base(filename)
+			id := base[:len(base)-5]
+			v, err := queryByID(id)
+			if err != nil {
+				return nil, err
+			}
+			return v, nil
+		}))
+	b, err := myfs.Open("b.json")
+```
 
 ## Marshalers
 
