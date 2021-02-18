@@ -31,7 +31,7 @@ type FileDef interface {
 
 type FileListable interface {
 	FileDef
-	readDirFunc() // this is yet to be defined
+	ReadDir(dirname string) ([]fs.FileInfo, error)
 }
 
 // File describes a file or group of files in a MarshalFS. Use NewFile or NewDynamicFile to create a file
@@ -42,7 +42,10 @@ type ObjectFile struct {
 	FileCommon
 }
 
-func (f *ObjectFile) readDirFunc() {}
+func (f *ObjectFile) ReadDir(dirname string) ([]fs.FileInfo, error) {
+	fi := &marshalFileInfo{f.path, f.FileCommon, sizeNoCache(f.value, f.FileCommon.customMarshaler)}
+	return []fs.FileInfo{fi}, nil
+}
 
 func (f *ObjectFile) Common() FileCommon {
 	return f.FileCommon
@@ -55,8 +58,18 @@ type FileCommon struct {
 	customMarshaler MarshalFunc
 }
 
+type ReadDirFunc func(dirname string) ([]fs.FileInfo, error)
+
+type FileGenListable struct {
+	*FileGen
+	readDir ReadDirFunc
+}
+
+func (f *FileGenListable) ReadDir(dirname string) ([]fs.FileInfo, error) {
+	return f.readDir(dirname)
+}
+
 type FileGen struct {
-	// oneOf static|dynamic
 	path      string
 	generator GeneratorFunc
 	FileCommon
@@ -77,6 +90,14 @@ func NewFile(path string, value interface{}, opts ...FileOption) FileListable {
 
 func NewFileGenerator(glob string, generator GeneratorFunc, opts ...FileOption) FileDef {
 	f := &FileGen{path: glob, generator: generator}
+	for _, opt := range opts {
+		opt(&f.FileCommon)
+	}
+	return f
+}
+
+func NewFileGenListable(glob string, generator GeneratorFunc, readDir ReadDirFunc, opts ...FileOption) FileListable {
+	f := &FileGenListable{FileGen: &FileGen{path: glob, generator: generator}, readDir: readDir}
 	for _, opt := range opts {
 		opt(&f.FileCommon)
 	}
@@ -123,6 +144,11 @@ func (mfs FS) Open(name string) (fs.File, error) {
 				file = f
 				break
 			}
+		case *FileGenListable:
+			if ok, err := filepath.Match(ft.path, name); ok && err == nil {
+				file = f
+				break
+			}
 		}
 	}
 	if file != nil && file.Common().Mode&fs.ModeDir == 0 {
@@ -134,6 +160,12 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		var value interface{}
 		switch ft := file.(type) {
 		case *FileGen:
+			var err error
+			value, err = ft.generator(name)
+			if err != nil {
+				return nil, &fs.PathError{Op: "open", Path: name, Err: err}
+			}
+		case *FileGenListable:
 			var err error
 			value, err = ft.generator(name)
 			if err != nil {
@@ -178,6 +210,24 @@ func (mfs FS) Open(name string) (fs.File, error) {
 				} else {
 					need[ft.path[:i]] = true
 				}
+			case *FileGenListable:
+				infos, err := ft.readDir(elem)
+				if err != nil {
+					continue
+				}
+				for _, info := range infos {
+					if info.IsDir() {
+						need[info.Name()] = true
+					} else {
+						c := FileCommon{
+							Mode:    info.Mode(),
+							ModTime: info.ModTime(),
+							Sys:     info.Sys(),
+						}
+						list = append(list, marshalFileInfo{info.Name(), c, info.Size()})
+					}
+				}
+
 			case *FileGen:
 				// TODO - directory handling for dynamic files
 			}
@@ -197,6 +247,8 @@ func (mfs FS) Open(name string) (fs.File, error) {
 						need[ft.path[len(prefix):len(prefix)+i]] = true
 					}
 				}
+			case *FileGenListable:
+
 			case *FileGen:
 				// TODO - directory handling for dynamic files
 			}
@@ -212,7 +264,7 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		delete(need, fi.name)
 	}
 	for name := range need {
-		list = append(list, marshalFileInfo{name, FileCommon{Mode: fs.ModeDir}, zeroSize})
+		list = append(list, marshalFileInfo{name, FileCommon{Mode: fs.ModeDir}, 0})
 	}
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].name < list[j].name
@@ -221,18 +273,12 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	if file == nil {
 		file = &ObjectFile{FileCommon: FileCommon{Mode: fs.ModeDir}}
 	}
-	return &marshalDir{name, marshalFileInfo{elem, file.Common(), zeroSize}, list, 0}, nil
+	return &marshalDir{name, marshalFileInfo{elem, file.Common(), 0}, list, 0}, nil
 }
 
-func sizeNoCache(value interface{}, marshaller MarshalFunc) func() int64 {
-	return func() int64 {
-		b, _ := marshaller(value)
-		return int64(len(b))
-	}
-}
-
-func zeroSize() int64 {
-	return 0
+func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
+	b, _ := marshaller(value)
+	return int64(len(b))
 }
 
 /*
@@ -276,7 +322,7 @@ func (mfs FS) Sub(dir string) (fs.FS, error) {
 type marshalFileInfo struct {
 	name string
 	f    FileCommon
-	size func() int64
+	size int64
 }
 
 func (i *marshalFileInfo) Name() string       { return i.name }
@@ -286,7 +332,7 @@ func (i *marshalFileInfo) ModTime() time.Time { return i.f.ModTime }
 func (i *marshalFileInfo) IsDir() bool        { return i.f.Mode&fs.ModeDir != 0 }
 func (i *marshalFileInfo) Sys() interface{}   { return i.f.Sys }
 
-func (i *marshalFileInfo) Size() int64                { return i.size() }
+func (i *marshalFileInfo) Size() int64                { return i.size }
 func (i *marshalFileInfo) Info() (fs.FileInfo, error) { return i, nil }
 
 // An openMarshalFile is a regular (non-directory) fs.File open for reading.
@@ -298,45 +344,32 @@ type openMarshalFile struct {
 	offset int64
 }
 
-// TODO cache bytes?
-func (f *openMarshalFile) Marshal() ([]byte, error) {
-	return f.data, nil
-}
-
 func (f *openMarshalFile) Stat() (fs.FileInfo, error) { return &f.marshalFileInfo, nil }
 
 func (f *openMarshalFile) Close() error { return nil }
 
 func (f *openMarshalFile) Read(dst []byte) (int, error) {
-	data, err := f.Marshal()
-	if err != nil {
-		return 0, err
-	}
-	if f.offset >= int64(len(data)) {
+	if f.offset >= int64(len(f.data)) {
 		return 0, io.EOF
 	}
 	if f.offset < 0 {
 		return 0, &fs.PathError{Op: "read", Path: f.path, Err: fs.ErrInvalid}
 	}
-	n := copy(dst, data[f.offset:])
+	n := copy(dst, f.data[f.offset:])
 	f.offset += int64(n)
 	return n, nil
 }
 
 func (f *openMarshalFile) Seek(offset int64, whence int) (int64, error) {
-	data, err := f.Marshal()
-	if err != nil {
-		return 0, err
-	}
 	switch whence {
 	case 0:
 		// offset += 0
 	case 1:
 		offset += f.offset
 	case 2:
-		offset += int64(len(data))
+		offset += int64(len(f.data))
 	}
-	if offset < 0 || offset > int64(len(data)) {
+	if offset < 0 || offset > int64(len(f.data)) {
 		return 0, &fs.PathError{Op: "seek", Path: f.path, Err: fs.ErrInvalid}
 	}
 	f.offset = offset
@@ -344,14 +377,10 @@ func (f *openMarshalFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (f *openMarshalFile) ReadAt(dest []byte, offset int64) (int, error) {
-	data, err := f.Marshal()
-	if err != nil {
-		return 0, err
-	}
-	if offset < 0 || offset > int64(len(data)) {
+	if offset < 0 || offset > int64(len(f.data)) {
 		return 0, &fs.PathError{Op: "read", Path: f.path, Err: fs.ErrInvalid}
 	}
-	n := copy(dest, data[offset:])
+	n := copy(dest, f.data[offset:])
 	if n < len(dest) {
 		return n, io.EOF
 	}

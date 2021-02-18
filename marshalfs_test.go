@@ -2,7 +2,9 @@ package marshalfs
 
 import (
 	"encoding/json"
+	"io/fs"
 	"io/ioutil"
+	"os"
 	"testing"
 	"testing/fstest"
 )
@@ -27,16 +29,38 @@ func TestMarshalFS(t *testing.T) {
 				value: struct{ Info string }{"Some interesting info.\n"},
 			},
 			//glob2: {Value: struct{ Info string }{"Some globbed info.\n"}},
-			&FileGen{
-				path: glob2,
-				generator: func(name string) (interface{}, error) {
-					return struct{ Info string }{"Some globbed info.\n"}, nil
+			&FileGenListable{
+				FileGen: &FileGen{
+					path: glob2,
+					generator: func(name string) (interface{}, error) {
+						return struct{ Info string }{"Some globbed info.\n"}, nil
+					},
+				},
+				readDir: func(dirname string) ([]fs.FileInfo, error) {
+					if dirname == "." {
+						x := &marshalFileInfo{
+							name: "their",
+							f: FileCommon{
+								Mode: fs.ModeDir,
+							},
+							size: 0,
+						}
+						return []fs.FileInfo{x}, nil
+					} else if dirname == "their" {
+						x := &marshalFileInfo{
+							name: "file",
+							f:    FileCommon{},
+							size: 10,
+						}
+						return []fs.FileInfo{x}, nil
+					}
+					return nil, os.ErrNotExist
 				},
 			},
 		},
 	}
 	for _, fn := range []string{f0, f1, f2} {
-		t.Run(fn, func(t *testing.T) {
+		t.Run("open "+fn, func(t *testing.T) {
 			f, err := m.Open(fn)
 			if err != nil {
 				t.Fatal(err)
@@ -50,8 +74,8 @@ func TestMarshalFS(t *testing.T) {
 		})
 	}
 
-	t.Run("TestFS", func(t *testing.T) {
-		if err := fstest.TestFS(m, f0, f1); err != nil {
+	t.Run("fstest.TestFS", func(t *testing.T) {
+		if err := fstest.TestFS(m, f0, f1, f2); err != nil {
 			t.Fatal(err)
 		}
 	})
