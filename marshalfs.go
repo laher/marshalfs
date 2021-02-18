@@ -14,35 +14,31 @@ type FileOption func(*FileCommon)
 
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
-	files            map[string]FileDef
+	files            map[string]FileSpec
 	defaultMarshaler MarshalFunc
 }
 
-type FilePaths map[string]FileDef
+type FilePaths map[string]FileSpec
 
 func New(defaultMarshaler MarshalFunc, files FilePaths) *FS {
 	mfs := &FS{defaultMarshaler: defaultMarshaler, files: files}
 	return mfs
 }
 
-type FileDef interface {
+type FileSpec interface {
 	Common() FileCommon
+	readDirFunc() // this is in prepration for planned 'dynamic files'
 }
 
-type FileListable interface {
-	FileDef
-	readDirFunc() // this is yet to be defined
-}
-
-// ObjectFile describes a file in a MarshalFS.
-type ObjectFile struct {
+// objectBackedFileSpec describes a file in a MarshalFS.
+type objectBackedFileSpec struct {
 	value interface{}
 	FileCommon
 }
 
-func (f *ObjectFile) readDirFunc() {}
+func (f *objectBackedFileSpec) readDirFunc() {}
 
-func (f *ObjectFile) Common() FileCommon {
+func (f *objectBackedFileSpec) Common() FileCommon {
 	return f.FileCommon
 }
 
@@ -54,8 +50,8 @@ type FileCommon struct {
 }
 
 // NewFile creates a new File
-func NewFile(value interface{}, opts ...FileOption) FileListable {
-	f := &ObjectFile{value: value}
+func NewFile(value interface{}, opts ...FileOption) FileSpec {
+	f := &objectBackedFileSpec{value: value}
 	for _, opt := range opts {
 		opt(&f.FileCommon)
 	}
@@ -74,7 +70,7 @@ func WithModTime(t time.Time) FileOption {
 	}
 }
 
-func WithCustomMarshaler(mf MarshalFunc) FileOption {
+func WithMarshaler(mf MarshalFunc) FileOption {
 	return func(f *FileCommon) {
 		f.customMarshaler = mf
 	}
@@ -89,10 +85,10 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
-	var file FileDef
+	var file FileSpec
 	for fpath, f := range mfs.files {
 		switch ft := f.(type) {
-		case *ObjectFile:
+		case *objectBackedFileSpec:
 			if name == fpath {
 				file = ft
 				break
@@ -107,7 +103,7 @@ func (mfs FS) Open(name string) (fs.File, error) {
 
 		var value interface{}
 		switch ft := file.(type) {
-		case *ObjectFile:
+		case *objectBackedFileSpec:
 			value = ft.value
 		}
 
@@ -139,7 +135,7 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		elem = "."
 		for fpath, f := range mfs.files {
 			switch ft := f.(type) {
-			case *ObjectFile:
+			case *objectBackedFileSpec:
 				i := strings.Index(fpath, "/")
 				if i < 0 {
 					list = append(list, marshalFileInfo{fpath, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
@@ -155,7 +151,7 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		prefix := name + "/"
 		for fpath, f := range mfs.files {
 			switch ft := f.(type) {
-			case *ObjectFile:
+			case *objectBackedFileSpec:
 				if strings.HasPrefix(fpath, prefix) {
 					felem := fpath[len(prefix):]
 					i := strings.Index(felem, "/")
@@ -180,27 +176,21 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		delete(need, fi.name)
 	}
 	for name := range need {
-		list = append(list, marshalFileInfo{name, FileCommon{Mode: fs.ModeDir}, zeroSize})
+		list = append(list, marshalFileInfo{name, FileCommon{Mode: fs.ModeDir}, 0})
 	}
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].name < list[j].name
 	})
 
 	if file == nil {
-		file = &ObjectFile{FileCommon: FileCommon{Mode: fs.ModeDir}}
+		file = &objectBackedFileSpec{FileCommon: FileCommon{Mode: fs.ModeDir}}
 	}
-	return &marshalDir{name, marshalFileInfo{elem, file.Common(), zeroSize}, list, 0}, nil
+	return &marshalDir{name, marshalFileInfo{elem, file.Common(), 0}, list, 0}, nil
 }
 
-func sizeNoCache(value interface{}, marshaller MarshalFunc) func() int64 {
-	return func() int64 {
-		b, _ := marshaller(value)
-		return int64(len(b))
-	}
-}
-
-func zeroSize() int64 {
-	return 0
+func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
+	b, _ := marshaller(value)
+	return int64(len(b))
 }
 
 // fsOnly is a wrapper that hides all but the fs.FS methods,
@@ -241,7 +231,7 @@ func (mfs FS) Sub(dir string) (fs.FS, error) {
 type marshalFileInfo struct {
 	name string
 	f    FileCommon
-	size func() int64
+	size int64
 }
 
 func (i *marshalFileInfo) Name() string       { return i.name }
@@ -251,7 +241,7 @@ func (i *marshalFileInfo) ModTime() time.Time { return i.f.ModTime }
 func (i *marshalFileInfo) IsDir() bool        { return i.f.Mode&fs.ModeDir != 0 }
 func (i *marshalFileInfo) Sys() interface{}   { return i.f.Sys }
 
-func (i *marshalFileInfo) Size() int64                { return i.size() }
+func (i *marshalFileInfo) Size() int64                { return i.size }
 func (i *marshalFileInfo) Info() (fs.FileInfo, error) { return i, nil }
 
 // An openMarshalFile is a regular (non-directory) fs.File open for reading.
