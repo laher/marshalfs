@@ -4,23 +4,23 @@ import (
 	"io"
 	"io/fs"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
 
-type GeneratorFunc func(name string) (interface{}, error)
 type MarshalFunc func(i interface{}) ([]byte, error)
 type FileOption func(*FileCommon)
 
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
-	files            []FileDef
+	files            map[string]FileDef
 	defaultMarshaler MarshalFunc
 }
 
-func New(defaultMarshaler MarshalFunc, files ...FileDef) *FS {
+type FilePaths map[string]FileDef
+
+func New(defaultMarshaler MarshalFunc, files FilePaths) *FS {
 	mfs := &FS{defaultMarshaler: defaultMarshaler, files: files}
 	return mfs
 }
@@ -34,10 +34,8 @@ type FileListable interface {
 	readDirFunc() // this is yet to be defined
 }
 
-// File describes a file or group of files in a MarshalFS. Use NewFile or NewDynamicFile to create a file
+// ObjectFile describes a file in a MarshalFS.
 type ObjectFile struct {
-	// oneOf static|dynamic
-	path  string
 	value interface{}
 	FileCommon
 }
@@ -55,28 +53,9 @@ type FileCommon struct {
 	customMarshaler MarshalFunc
 }
 
-type FileGen struct {
-	// oneOf static|dynamic
-	path      string
-	generator GeneratorFunc
-	FileCommon
-}
-
-func (f *FileGen) Common() FileCommon {
-	return f.FileCommon
-}
-
 // NewFile creates a new File
-func NewFile(path string, value interface{}, opts ...FileOption) FileListable {
-	f := &ObjectFile{path: path, value: value}
-	for _, opt := range opts {
-		opt(&f.FileCommon)
-	}
-	return f
-}
-
-func NewFileGenerator(glob string, generator GeneratorFunc, opts ...FileOption) FileDef {
-	f := &FileGen{path: glob, generator: generator}
+func NewFile(value interface{}, opts ...FileOption) FileListable {
+	f := &ObjectFile{value: value}
 	for _, opt := range opts {
 		opt(&f.FileCommon)
 	}
@@ -111,16 +90,11 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
 	var file FileDef
-	for _, f := range mfs.files {
+	for fpath, f := range mfs.files {
 		switch ft := f.(type) {
 		case *ObjectFile:
-			if name == ft.path {
-				file = f
-				break
-			}
-		case *FileGen:
-			if ok, err := filepath.Match(ft.path, name); ok && err == nil {
-				file = f
+			if name == fpath {
+				file = ft
 				break
 			}
 		}
@@ -133,12 +107,6 @@ func (mfs FS) Open(name string) (fs.File, error) {
 
 		var value interface{}
 		switch ft := file.(type) {
-		case *FileGen:
-			var err error
-			value, err = ft.generator(name)
-			if err != nil {
-				return nil, &fs.PathError{Op: "open", Path: name, Err: err}
-			}
 		case *ObjectFile:
 			value = ft.value
 		}
@@ -169,35 +137,35 @@ func (mfs FS) Open(name string) (fs.File, error) {
 	var need = make(map[string]bool)
 	if name == "." {
 		elem = "."
-		for _, f := range mfs.files {
+		for fpath, f := range mfs.files {
 			switch ft := f.(type) {
 			case *ObjectFile:
-				i := strings.Index(ft.path, "/")
+				i := strings.Index(fpath, "/")
 				if i < 0 {
-					list = append(list, marshalFileInfo{ft.path, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
+					list = append(list, marshalFileInfo{fpath, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
 				} else {
-					need[ft.path[:i]] = true
+					need[fpath[:i]] = true
 				}
-			case *FileGen:
+			default:
 				// TODO - directory handling for dynamic files
 			}
 		}
 	} else {
 		elem = name[strings.LastIndex(name, "/")+1:]
 		prefix := name + "/"
-		for _, f := range mfs.files {
+		for fpath, f := range mfs.files {
 			switch ft := f.(type) {
 			case *ObjectFile:
-				if strings.HasPrefix(ft.path, prefix) {
-					felem := ft.path[len(prefix):]
+				if strings.HasPrefix(fpath, prefix) {
+					felem := fpath[len(prefix):]
 					i := strings.Index(felem, "/")
 					if i < 0 {
 						list = append(list, marshalFileInfo{felem, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
 					} else {
-						need[ft.path[len(prefix):len(prefix)+i]] = true
+						need[fpath[len(prefix):len(prefix)+i]] = true
 					}
 				}
-			case *FileGen:
+			default:
 				// TODO - directory handling for dynamic files
 			}
 		}
@@ -235,9 +203,6 @@ func zeroSize() int64 {
 	return 0
 }
 
-/*
- TODO should we introduce ReadFile/Stat/ReadDir/etc?
- Seems unclear for 'dynamic' files ...
 // fsOnly is a wrapper that hides all but the fs.FS methods,
 // to avoid an infinite recursion when implementing special
 // methods in terms of helpers that would use them.
@@ -271,7 +236,7 @@ func (noSub) Sub() {} // not the fs.SubFS signature
 func (mfs FS) Sub(dir string) (fs.FS, error) {
 	return fs.Sub(noSub{mfs}, dir)
 }
-*/
+
 // A marshalFileInfo implements fs.FileInfo and fs.DirEntry for a given map file.
 type marshalFileInfo struct {
 	name string
