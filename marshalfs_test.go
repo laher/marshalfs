@@ -24,7 +24,8 @@ func TestMarshalFS(t *testing.T) {
 			},
 		},
 	}
-	for _, fn := range []string{f0, f1} {
+	for _, fname := range []string{f0, f1} {
+		fn := fname
 		t.Run(fn, func(t *testing.T) {
 			f, err := m.Open(fn)
 			if err != nil {

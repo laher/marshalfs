@@ -30,8 +30,8 @@ func Example_forConfig() {
 			return nil, err
 		}
 		c := &myconfig{}
-		json.Unmarshal(b, c)
-		return c, nil
+		err = json.Unmarshal(b, c)
+		return c, err
 	}
 
 	// Set up ...

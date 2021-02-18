@@ -93,6 +93,8 @@ func (mfs FS) Open(name string) (fs.File, error) {
 				file = ft
 				break
 			}
+		default:
+			// TODO - handling for dynamic files
 		}
 	}
 	if file != nil && file.Common().Mode&fs.ModeDir == 0 {
@@ -105,6 +107,8 @@ func (mfs FS) Open(name string) (fs.File, error) {
 		switch ft := file.(type) {
 		case *objectBackedFileSpec:
 			value = ft.value
+		default:
+			// TODO - handling for dynamic files
 		}
 
 		data, err := marshaler(value)
@@ -247,7 +251,6 @@ func (i *marshalFileInfo) Info() (fs.FileInfo, error) { return i, nil }
 // An openMarshalFile is a regular (non-directory) fs.File open for reading.
 type openMarshalFile struct {
 	path string
-	//value interface{}
 	data []byte
 	marshalFileInfo
 	offset int64
