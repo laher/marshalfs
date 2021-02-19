@@ -6,6 +6,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type FileOption func(*FileCommon)
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
 	files            map[string]FileSpec
+	lock             sync.RWMutex
 	defaultMarshaler MarshalFunc
 }
 
@@ -81,7 +83,9 @@ var _ fs.FS = &FS{}
 var _ fs.File = (*openMarshalFile)(nil)
 
 // Open opens the named file.
-func (mfs FS) Open(name string) (fs.File, error) {
+func (mfs *FS) Open(name string) (fs.File, error) {
+	mfs.lock.RLock()
+	defer mfs.lock.RUnlock()
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
@@ -197,6 +201,25 @@ func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
 	return int64(len(b))
 }
 
+// WriteFile is similar to os.WriteFile, except it takes a FileSpec instead of `[]byte, mode`
+func (mfs *FS) WriteFile(filename string, item FileSpec) {
+	mfs.lock.Lock()
+	defer mfs.lock.Unlock()
+	mfs.files[filename] = item
+}
+
+func (mfs *FS) Del(filename string) {
+	mfs.lock.Lock()
+	defer mfs.lock.Unlock()
+	delete(mfs.files, filename)
+}
+
+func (mfs *FS) ReplaceAll(files map[string]FileSpec) {
+	mfs.lock.Lock()
+	defer mfs.lock.Unlock()
+	mfs.files = files
+}
+
 // fsOnly is a wrapper that hides all but the fs.FS methods,
 // to avoid an infinite recursion when implementing special
 // methods in terms of helpers that would use them.
@@ -205,29 +228,29 @@ func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
 // MarshalFS exercise more code paths when used in tests.)
 type fsOnly struct{ fs.FS }
 
-func (mfs FS) ReadFile(name string) ([]byte, error) {
+func (mfs *FS) ReadFile(name string) ([]byte, error) {
 	return fs.ReadFile(fsOnly{mfs}, name)
 }
 
-func (mfs FS) Stat(name string) (fs.FileInfo, error) {
+func (mfs *FS) Stat(name string) (fs.FileInfo, error) {
 	return fs.Stat(fsOnly{mfs}, name)
 }
 
-func (mfs FS) ReadDir(name string) ([]fs.DirEntry, error) {
+func (mfs *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return fs.ReadDir(fsOnly{mfs}, name)
 }
 
-func (mfs FS) Glob(pattern string) ([]string, error) {
+func (mfs *FS) Glob(pattern string) ([]string, error) {
 	return fs.Glob(fsOnly{mfs}, pattern)
 }
 
 type noSub struct {
-	FS
+	*FS
 }
 
 func (noSub) Sub() {} // not the fs.SubFS signature
 
-func (mfs FS) Sub(dir string) (fs.FS, error) {
+func (mfs *FS) Sub(dir string) (fs.FS, error) {
 	return fs.Sub(noSub{mfs}, dir)
 }
 
