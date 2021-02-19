@@ -257,7 +257,10 @@ func (mfs *FS) Del(filename string) {
 	delete(mfs.files, filename)
 }
 
-func (mfs *FS) ReplaceAll(files map[string]FileSpec) error {
+func (mfs *FS) ReplaceAll(files FilePaths) error {
+	if err := files.validate(); err != nil {
+		return err
+	}
 	mfs.lock.Lock()
 	defer mfs.lock.Unlock()
 	mfs.files = files
