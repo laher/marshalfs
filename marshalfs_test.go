@@ -46,3 +46,45 @@ func TestMarshalFS(t *testing.T) {
 		}
 	})
 }
+
+func TestConflict(t *testing.T) {
+	t.Run("NoConflict", func(t *testing.T) {
+
+		files := FilePaths{
+			"dir/a": &objectBackedFileSpec{
+				value: struct {
+					Thingy []byte
+					Number int
+				}{Thingy: []byte("hello, world\n"), Number: 10},
+			},
+			"dir/b": &objectBackedFileSpec{
+				value: struct{ Info string }{"Some interesting info.\n"},
+			},
+		}
+		err := files.validate()
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	t.Run("Conflict", func(t *testing.T) {
+		files := FilePaths{
+			"dir/a": &objectBackedFileSpec{
+				value: struct {
+					Thingy []byte
+					Number int
+				}{Thingy: []byte("hello, world\n"), Number: 10},
+			},
+			"dir/b": &objectBackedFileSpec{
+				value: struct{ Info string }{"Some interesting info.\n"},
+			},
+			"dir/b/c": &objectBackedFileSpec{
+				value: struct{ Info string }{"Some interesting info.\n"},
+			},
+		}
+		err := files.validate()
+		if err != ErrPathConflict {
+			t.FailNow()
+		}
+	})
+}

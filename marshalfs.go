@@ -1,9 +1,11 @@
 package marshalfs
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -15,16 +17,41 @@ type FileOption func(*FileCommon)
 
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
-	files            map[string]FileSpec
+	files            FilePaths
 	lock             sync.RWMutex
 	defaultMarshaler MarshalFunc
 }
 
 type FilePaths map[string]FileSpec
 
-func New(defaultMarshaler MarshalFunc, files FilePaths) *FS {
+func New(defaultMarshaler MarshalFunc, files FilePaths) (*FS, error) {
+	if err := files.validate(); err != nil {
+		return nil, err
+	}
 	mfs := &FS{defaultMarshaler: defaultMarshaler, files: files}
-	return mfs
+	return mfs, nil
+}
+
+var ErrPathConflict = errors.New("path conflict")
+
+func (files FilePaths) validate() error {
+	paths := map[string]bool{}
+	for k := range files {
+		parts := strings.Split(k, "/") // separator is /
+		path := ""
+		for i, p := range parts {
+			path = filepath.Join(path, p)
+			isDir := i < len(parts)-1
+			if exIsDir, ok := paths[path]; ok {
+				if exIsDir != isDir {
+					return ErrPathConflict
+				}
+			}
+
+			paths[path] = isDir
+		}
+	}
+	return nil
 }
 
 type FileSpec interface {
@@ -201,11 +228,27 @@ func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
 	return int64(len(b))
 }
 
+func (files FilePaths) AddNoMutate(filename string, item FileSpec) FilePaths {
+	ret := FilePaths{}
+	for n, f := range files {
+		ret[n] = f
+	}
+	ret[filename] = item
+	return ret
+}
+
 // WriteFile is similar to os.WriteFile, except it takes a FileSpec instead of `[]byte, mode`
-func (mfs *FS) WriteFile(filename string, item FileSpec) {
+func (mfs *FS) WriteFile(filename string, item FileSpec) error {
+	mfs.lock.RLock()
+	files := mfs.files.AddNoMutate(filename, item)
+	mfs.lock.RUnlock()
+	if err := files.validate(); err != nil {
+		return err
+	}
 	mfs.lock.Lock()
 	defer mfs.lock.Unlock()
-	mfs.files[filename] = item
+	mfs.files = files
+	return nil
 }
 
 func (mfs *FS) Del(filename string) {
@@ -214,10 +257,11 @@ func (mfs *FS) Del(filename string) {
 	delete(mfs.files, filename)
 }
 
-func (mfs *FS) ReplaceAll(files map[string]FileSpec) {
+func (mfs *FS) ReplaceAll(files map[string]FileSpec) error {
 	mfs.lock.Lock()
 	defer mfs.lock.Unlock()
 	mfs.files = files
+	return nil
 }
 
 // fsOnly is a wrapper that hides all but the fs.FS methods,
