@@ -256,45 +256,32 @@ type openMarshalFile struct {
 	offset int64
 }
 
-// TODO cache bytes?
-func (f *openMarshalFile) Marshal() ([]byte, error) {
-	return f.data, nil
-}
-
 func (f *openMarshalFile) Stat() (fs.FileInfo, error) { return &f.marshalFileInfo, nil }
 
 func (f *openMarshalFile) Close() error { return nil }
 
 func (f *openMarshalFile) Read(dst []byte) (int, error) {
-	data, err := f.Marshal()
-	if err != nil {
-		return 0, err
-	}
-	if f.offset >= int64(len(data)) {
+	if f.offset >= int64(len(f.data)) {
 		return 0, io.EOF
 	}
 	if f.offset < 0 {
 		return 0, &fs.PathError{Op: "read", Path: f.path, Err: fs.ErrInvalid}
 	}
-	n := copy(dst, data[f.offset:])
+	n := copy(dst, f.data[f.offset:])
 	f.offset += int64(n)
 	return n, nil
 }
 
 func (f *openMarshalFile) Seek(offset int64, whence int) (int64, error) {
-	data, err := f.Marshal()
-	if err != nil {
-		return 0, err
-	}
 	switch whence {
 	case 0:
 		// offset += 0
 	case 1:
 		offset += f.offset
 	case 2:
-		offset += int64(len(data))
+		offset += int64(len(f.data))
 	}
-	if offset < 0 || offset > int64(len(data)) {
+	if offset < 0 || offset > int64(len(f.data)) {
 		return 0, &fs.PathError{Op: "seek", Path: f.path, Err: fs.ErrInvalid}
 	}
 	f.offset = offset
@@ -302,14 +289,10 @@ func (f *openMarshalFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (f *openMarshalFile) ReadAt(dest []byte, offset int64) (int, error) {
-	data, err := f.Marshal()
-	if err != nil {
-		return 0, err
-	}
-	if offset < 0 || offset > int64(len(data)) {
+	if offset < 0 || offset > int64(len(f.data)) {
 		return 0, &fs.PathError{Op: "read", Path: f.path, Err: fs.ErrInvalid}
 	}
-	n := copy(dest, data[offset:])
+	n := copy(dest, f.data[offset:])
 	if n < len(dest) {
 		return n, io.EOF
 	}
