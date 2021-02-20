@@ -36,7 +36,7 @@ func Example_forConfig() {
 
 	// Set up ...
 	input := &myconfig{S: "string", I: 3}
-	mfs, err := marshalfs.New(json.Marshal, marshalfs.FilePaths{"config.json": marshalfs.NewFile(input)})
+	mfs, err := marshalfs.New(json.Marshal, marshalfs.FileSpecs{"config.json": marshalfs.NewFile(input)})
 	if err != nil {
 		log.Fatalf("unexpected error: %v", err)
 	}

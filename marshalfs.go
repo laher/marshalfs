@@ -17,14 +17,14 @@ type FileOption func(*FileCommon)
 
 // An FS is a simple read-only filesystem backed by objects and some serialization function.
 type FS struct {
-	files            FilePaths
+	files            FileSpecs
 	lock             sync.RWMutex
 	defaultMarshaler MarshalFunc
 }
 
-type FilePaths map[string]FileSpec
+type FileSpecs map[string]FileSpec
 
-func New(defaultMarshaler MarshalFunc, files FilePaths) (*FS, error) {
+func New(defaultMarshaler MarshalFunc, files FileSpecs) (*FS, error) {
 	if err := files.validate(); err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func New(defaultMarshaler MarshalFunc, files FilePaths) (*FS, error) {
 
 var ErrPathConflict = errors.New("path conflict")
 
-func (files FilePaths) validate() error {
+func (files FileSpecs) validate() error {
 	paths := map[string]bool{}
 	for k := range files {
 		parts := strings.Split(k, "/") // separator is /
@@ -52,6 +52,14 @@ func (files FilePaths) validate() error {
 		}
 	}
 	return nil
+}
+
+func (files FileSpecs) cp() FileSpecs {
+	ret := FileSpecs{}
+	for n, f := range files {
+		ret[n] = f
+	}
+	return ret
 }
 
 type FileSpec interface {
@@ -153,7 +161,7 @@ func (mfs *FS) Open(name string) (fs.File, error) {
 			marshalFileInfo: marshalFileInfo{
 				name: path.Base(name),
 				f:    file.Common(),
-				size: sizeNoCache(value, marshaler),
+				size: size(value, marshaler),
 			},
 			offset: 0,
 		}, nil
@@ -173,7 +181,7 @@ func (mfs *FS) Open(name string) (fs.File, error) {
 			case *objectBackedFileSpec:
 				i := strings.Index(fpath, "/")
 				if i < 0 {
-					list = append(list, marshalFileInfo{fpath, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
+					list = append(list, marshalFileInfo{fpath, ft.FileCommon, size(ft.value, mfs.defaultMarshaler)})
 				} else {
 					need[fpath[:i]] = true
 				}
@@ -191,7 +199,7 @@ func (mfs *FS) Open(name string) (fs.File, error) {
 					felem := fpath[len(prefix):]
 					i := strings.Index(felem, "/")
 					if i < 0 {
-						list = append(list, marshalFileInfo{felem, ft.FileCommon, sizeNoCache(ft.value, mfs.defaultMarshaler)})
+						list = append(list, marshalFileInfo{felem, ft.FileCommon, size(ft.value, mfs.defaultMarshaler)})
 					} else {
 						need[fpath[len(prefix):len(prefix)+i]] = true
 					}
@@ -223,17 +231,9 @@ func (mfs *FS) Open(name string) (fs.File, error) {
 	return &marshalDir{name, marshalFileInfo{elem, file.Common(), 0}, list, 0}, nil
 }
 
-func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
+func size(value interface{}, marshaller MarshalFunc) int64 {
 	b, _ := marshaller(value)
 	return int64(len(b))
-}
-
-func (files FilePaths) cp() FilePaths {
-	ret := FilePaths{}
-	for n, f := range files {
-		ret[n] = f
-	}
-	return ret
 }
 
 // WriteFile is similar to os.WriteFile, except it takes a FileSpec instead of `[]byte, mode`
@@ -257,7 +257,7 @@ func (mfs *FS) Del(filename string) {
 	delete(mfs.files, filename)
 }
 
-func (mfs *FS) ReplaceAll(files FilePaths) error {
+func (mfs *FS) ReplaceAll(files FileSpecs) error {
 	if err := files.validate(); err != nil {
 		return err
 	}
@@ -301,7 +301,7 @@ func (mfs *FS) Sub(dir string) (fs.FS, error) {
 	return fs.Sub(noSub{mfs}, dir)
 }
 
-// A marshalFileInfo implements fs.FileInfo and fs.DirEntry for a given map file.
+// A marshalFileInfo implements fs.FileInfo and fs.DirEntry for a given file spec.
 type marshalFileInfo struct {
 	name string
 	f    FileCommon
