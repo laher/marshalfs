@@ -15,7 +15,8 @@ import (
 type MarshalFunc func(i interface{}) ([]byte, error)
 type FileOption func(*FileCommon)
 
-// An FS is a simple read-only filesystem backed by objects and some serialization function.
+// An FS is a simple filesystem backed by objects and some serialization function.
+// Given that files are represented as serializable objects, this is only writable using non-standard methods - see "SetFile"/"Del"/"ReplaceAll"
 type FS struct {
 	files            FileSpecs
 	lock             sync.RWMutex
@@ -86,7 +87,7 @@ type FileCommon struct {
 	customMarshaler MarshalFunc
 }
 
-// NewFile creates a new File
+// NewFile creates a new FileSpec
 func NewFile(value interface{}, opts ...FileOption) FileSpec {
 	f := &objectBackedFileSpec{value: value}
 	for _, opt := range opts {
@@ -236,8 +237,8 @@ func size(value interface{}, marshaller MarshalFunc) int64 {
 	return int64(len(b))
 }
 
-// WriteFile is similar to os.WriteFile, except it takes a FileSpec instead of `[]byte, mode`
-func (mfs *FS) WriteFile(filename string, item FileSpec) error {
+// SetFile is similar to os.WriteFile, except it takes a FileSpec instead of `[]byte, mode`
+func (mfs *FS) SetFile(filename string, item FileSpec) error {
 	mfs.lock.RLock()
 	files := mfs.files.cp()
 	mfs.lock.RUnlock()
