@@ -1,10 +1,10 @@
-# MarshalFS [a go package]
+# MarshalFS
 
-Simulate a 'readonly' filesystem, backed by serializable objects. Supply a marshaler(s) so that calling code can read your files via a standard `io.Reader`.
+MarshalFS [a go1.16+ package] simulates a 'readonly' filesystem, backed by serializable objects. Supply a marshaler(s) so that calling code can read your files via a standard `io.Reader`. MarshalFS is a riff on [fstest.MapFS](https://golang.org/pkg/testing/fstest/#MapFS).
 
-Note that although fs.FS is a read-only interface ,you _can_ update marshalfs's backing objects via non-standard methods (SetFile/Remove/ReplaceAll). Also, each time you open a file, it will re-marshal the backing object. MarshalFS also uses a `sync.RWMutex` to provide some concurrency safety.
+Note that although `fs.FS` is a read-only interface ,you _can_ update marshalfs's backing objects via non-standard methods (`SetFile`/`Remove`/`ReplaceAll`). Also, each time you open a file, it will re-marshal the backing object. MarshalFS also uses a `sync.RWMutex` to provide some concurrency safety.
 
-`marshalfs` only works with Go 1.16+. It can be thought of as a riff on [fstest.MapFS](https://golang.org/pkg/testing/fstest/#MapFS).
+`marshalfs` only works with Go 1.16+.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/laher/marshalfs.svg)](https://pkg.go.dev/github.com/laher/marshalfs)
 
@@ -12,7 +12,7 @@ Note that although fs.FS is a read-only interface ,you _can_ update marshalfs's 
 
 Haven't you heard, [everything is a file](https://en.wikipedia.org/wiki/Everything_is_a_file)?
 
-Mainly, for testing, and for accessing any data source as though it were a file.
+Mainly, for testing, and for accessing another data source as though it were a file.
 
 I can think of a bunch of uses for a read-only filesystem:
 
@@ -21,7 +21,10 @@ I can think of a bunch of uses for a read-only filesystem:
   * Injecting config into tests.
   * Simulate file changes over time.
   * Imitate a serial interface or some other filesystem-based resource.
- * Reading a completely different data source, as though it were a file (TODO: example needed - prolly some helpers too).
+ * Reading a completely different data source, as though it were a file.
+   * (TODO: example needed - prolly some helpers too).
+   * Use SetFile/Remove/ReplaceAll to update your FS in line with your FS.
+   * _Concurrency warning: MarshalFS uses a lock to avoid data races on each `Open`. For the time being, you'll need to take care of object data races yourself._
  * Optionally, overlay this filesystem over a real `os.DirFS` filesystem, or any other `fs.FS`, using [mergefs](https://github.com/laher/mergefs).
 
 Last but not least, if you just want to implement an exotic `fs.FS` filesystem, then marshalfs does some of the harder stuff for you.
@@ -72,6 +75,7 @@ _Please contribute by sending a PR with a link to an example._
      * Probably something like `WithUnmarshaler(json.Unmarshal)`.
  * Helpers for 'dynamically updating objects':
    * Maybe some helpers for "file generators"
+   * `WithReadLock()` for files, and/or supply functions instead of objects
  * Maybe somehow copy mergefs into here?
  * Dynamic directories ...
   * This would be awesome. You could use it to define a database 'driver' to back a synthetic filesystem.
