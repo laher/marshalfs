@@ -2,6 +2,7 @@ package marshalfs
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"testing"
 	"testing/fstest"
@@ -49,7 +50,6 @@ func TestMarshalFS(t *testing.T) {
 
 func TestConflict(t *testing.T) {
 	t.Run("NoConflict", func(t *testing.T) {
-
 		files := FilePaths{
 			"dir/a": &objectBackedFileSpec{
 				value: struct {
@@ -83,7 +83,7 @@ func TestConflict(t *testing.T) {
 			},
 		}
 		err := files.validate()
-		if err != ErrPathConflict {
+		if !errors.Is(err, ErrPathConflict) {
 			t.FailNow()
 		}
 	})

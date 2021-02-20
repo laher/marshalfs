@@ -228,20 +228,20 @@ func sizeNoCache(value interface{}, marshaller MarshalFunc) int64 {
 	return int64(len(b))
 }
 
-func (files FilePaths) AddNoMutate(filename string, item FileSpec) FilePaths {
+func (files FilePaths) cp() FilePaths {
 	ret := FilePaths{}
 	for n, f := range files {
 		ret[n] = f
 	}
-	ret[filename] = item
 	return ret
 }
 
 // WriteFile is similar to os.WriteFile, except it takes a FileSpec instead of `[]byte, mode`
 func (mfs *FS) WriteFile(filename string, item FileSpec) error {
 	mfs.lock.RLock()
-	files := mfs.files.AddNoMutate(filename, item)
+	files := mfs.files.cp()
 	mfs.lock.RUnlock()
+	files[filename] = item
 	if err := files.validate(); err != nil {
 		return err
 	}
