@@ -16,7 +16,7 @@ type MarshalFunc func(i interface{}) ([]byte, error)
 type FileOption func(*FileCommon)
 
 // An FS is a simple filesystem backed by objects and some serialization function.
-// Given that files are represented as serializable objects, this is only writable using non-standard methods - see "SetFile"/"Del"/"ReplaceAll"
+// Given that files are backed by objects, this is only writable using non-standard methods - see "SetFile"/"Remove"/"ReplaceAll"
 type FS struct {
 	files            FileSpecs
 	lock             sync.RWMutex
@@ -26,6 +26,7 @@ type FS struct {
 type FileSpecs map[string]FileSpec
 
 func New(defaultMarshaler MarshalFunc, files FileSpecs) (*FS, error) {
+	files = files.cp() // defensive copy
 	if err := files.validate(); err != nil {
 		return nil, err
 	}
@@ -252,13 +253,14 @@ func (mfs *FS) SetFile(filename string, item FileSpec) error {
 	return nil
 }
 
-func (mfs *FS) Del(filename string) {
+func (mfs *FS) Remove(filename string) {
 	mfs.lock.Lock()
 	defer mfs.lock.Unlock()
 	delete(mfs.files, filename)
 }
 
 func (mfs *FS) ReplaceAll(files FileSpecs) error {
+	files = files.cp() // defensive copy
 	if err := files.validate(); err != nil {
 		return err
 	}

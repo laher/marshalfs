@@ -1,10 +1,8 @@
 # MarshalFS [a go package]
 
-Simulate a readonly filesystem, backed by serializable objects.
+Simulate a 'readonly' filesystem, backed by serializable objects. Supply a marshaler(s) so that calling code can read your files via a standard `io.Reader`.
 
-With `marshalfs`, you can back your 'filesystem' with in-memory objects.
-
-Each time you open a file, it will re-marshal the backing object.
+Note that although fs.FS is a read-only interface ,you _can_ update marshalfs's backing objects via non-standard methods (SetFile/Remove/ReplaceAll). Also, each time you open a file, it will re-marshal the backing object. MarshalFS also uses a `sync.RWMutex` to provide some concurrency safety.
 
 `marshalfs` only works with Go 1.16+. It can be thought of as a riff on [fstest.MapFS](https://golang.org/pkg/testing/fstest/#MapFS).
 
@@ -33,7 +31,7 @@ Last but not least, if you just want to implement an exotic `fs.FS` filesystem, 
 Test your config parsing without actually storing 'fixture' files on the filesystem. ...
 
  * e.g.: testing config files ... See [Example_forConfig()](./example_config_test.go) for a demonstration
- * e.g.2: injecting config data without writing to the filesystem:
+ * e.g.2: injecting config data without writing directly to the filesystem:
 
 ```go
   mfs, err := marshalfs.New(json.Marshal, marshalfs.FilePaths{
@@ -62,16 +60,19 @@ _Please contribute by sending a PR with a link to an example._
 
 ## Caveats
 
- * This implementation is NOT computationally efficient. It keeps entire objects in RAM, and bytes in RAM too
- * `fs.FS` is a read-only API. So is this, currently. The backing objects can change each time you open them, though
+ * This implementation is NOT computationally efficient. It keeps entire objects in RAM, and bytes in RAM too.
+ * `fs.FS` is a read-only API. In the standard sense, so is this, currently.
+  * The backing objects can change each time you open them, though
+  * You _can_ update the backing objects using marshalfs.FS.SetFile()/marshalfs.FS.Remove()/marshalfs.FS.ReplaceAll()
+    * ReplaceAll is a good option if you want to maintain your map outside of marshalfs.
 
 ## Incomplete plans
 
- * Support 'updating/adding/removing' file paths and objects.
-   * Concurrency checking (RWMutex)
+ * Support for a writable FS will likely be postponed until fs.FS supports writable files. The eventual design is unknown.
+     * Probably something like `WithUnmarshaler(json.Unmarshal)`.
+ * Helpers for 'dynamically updating objects':
    * Maybe some helpers for "file generators"
-   * Maybe - generators which can be updated on read
- * Maybe copy mergefs into here?
+ * Maybe somehow copy mergefs into here?
 
 ## Related Works
 
@@ -79,7 +80,7 @@ _Please contribute by sending a PR with a link to an example._
    * [os.DirFS](https://tip.golang.org/pkg/os/) contains `os.DirFS` - this 'default' implementation is backed by an actual filesystem.
    * [fstest.MapFS](https://tip.golang.org/pkg/testing/fstest/) contains a memory-map implementation and a testing tool. The standard library contains a few other fs.FS implementations (like 'zip')
    * [embed.FS](https://tip.golang.org/pkg/embed/) provides access to files embedded in the running Go program.
- * An earlier work, [afero](https://github.com/spf13/afero) is a filesystem abstraction for Go, which has been the standard for filesystem abstractions up until go1.15. It's read-write, and it's a mature project. The interfaces look very different (big with lots of methods), so it's not really compatible.
+ * An earlier work, [afero](https://github.com/spf13/afero) is a filesystem abstraction for Go, which has been the standard for filesystem abstractions up until go1.15. It's read-write in the usual sense (io.Writer), and it's a mature project. The interfaces look very different (lots of methods), so it's not really compatible.
  * [s3fs](https://github.com/jszwec/s3fs) is a fs.FS backed by the AWS S3 client
  * [mergefs](https://github.com/laher/mergefs) merge `fs.FS` filesystems together so that your FS can easily read from multiple sources.
  * [hashfs](https://pkg.go.dev/github.com/benbjohnson/hashfs) appends SHA256 hashes to filenames to allow for aggressive HTTP caching.
