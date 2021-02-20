@@ -73,6 +73,11 @@ _Please contribute by sending a PR with a link to an example._
  * Helpers for 'dynamically updating objects':
    * Maybe some helpers for "file generators"
  * Maybe somehow copy mergefs into here?
+ * Defining filesystem using globs + functions. Say, `person/*/*` to retrieve a person by `person/{lastname}/{firstname}`.
+  * I initially put a lot of effort into this but found it hard to make it pass `fstest.TestFS`.
+  * This would be awesome. You could use it to define a database 'driver' to back a filesystem.
+  * Essentially, for a valid fs.FS, you need to be able to list the contents a directory.
+  * Whilst this seems very acheivable - you'd need to supply a 'list directory' function, it makes the package a lot more complex. As such, I've put it off for now.
 
 ## Related Works
 
